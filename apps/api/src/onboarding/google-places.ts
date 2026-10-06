@@ -26,7 +26,7 @@ export class GooglePlacesAdapter{
  async search(snapshot:OnboardingSnapshot,kind:'location'|'competitors',radius:number):Promise<PlaceSearchResult>{
   const facts=snapshot.state.facts;let center:{latitude:number;longitude:number}|undefined;
   if(kind==='competitors'&&facts.placeId?.value){const own=await this.detail(facts.placeId.value);if(own.latitude!==null&&own.longitude!==null)center={latitude:own.latitude,longitude:own.longitude};else throw new Error('Location unavailable');}
-  const query=kind==='location'?[facts.name?.value,facts.city?.value]:[facts.businessType?.value??'academia',facts.city?.value,facts.address?.value];
+  const query=kind==='location'?[facts.name?.value,facts.city?.value]:[facts.businessType?.value??'clínica',facts.city?.value,facts.address?.value];
   const data=await this.request('places:searchText',fields.map(f=>'places.'+f).join(','),{textQuery:query.filter(Boolean).join(' '),languageCode:'pt-BR',regionCode:'BR',pageSize:20,...(center?{locationBias:{circle:{center,radius}}}:{})}) as {places?:GooglePlace[]};
   if(data.places!==undefined&&!Array.isArray(data.places))throw new Error('Invalid places');
   const ids=new Set<string>();const places=(data.places??[]).flatMap(p=>{
@@ -38,7 +38,7 @@ export class GooglePlacesAdapter{
    }
    return [option(p)];
   });
-  return {status:'available',places,radius:center?radius:null,...(center?{center}:{}),message:kind==='location'?'Encontrei estas opções. Confira qual é sua academia e os dados do cadastro.':center?'Concorrentes encontrados dentro do raio escolhido. Selecione até 10 para acompanhar.':'Sugestões pela cidade. Confirme o local no Google para pesquisar por distância.',...(process.env.GOOGLE_MAPS_BROWSER_KEY?{mapKey:process.env.GOOGLE_MAPS_BROWSER_KEY}:{})};
+  return {status:'available',places,radius:center?radius:null,...(center?{center}:{}),message:kind==='location'?'Encontrei estas opções. Confira qual é sua clínica e os dados do cadastro.':center?'Concorrentes encontrados dentro do raio escolhido. Selecione até 10 para acompanhar.':'Sugestões pela cidade. Confirme o local no Google para pesquisar por distância.',...(process.env.GOOGLE_MAPS_BROWSER_KEY?{mapKey:process.env.GOOGLE_MAPS_BROWSER_KEY}:{})};
  }
 }
 export async function places(snapshot:OnboardingSnapshot,kind:'location'|'competitors',radius=3000):Promise<PlaceSearchResult>{

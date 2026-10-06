@@ -1,0 +1,10 @@
+{
+  "dataconnect": {
+    "source": "firebase/dataconnect"
+  },
+  "firestore": {
+    "database": "(default)",
+    "rules": "firebase/firestore.rules",
+    "indexes": "firebase/firestore.indexes.json"
+  }
+}

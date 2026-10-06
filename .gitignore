@@ -11,3 +11,8 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+
+# Firebase CLI/emulators and local administrative credentials
+.firebase/
+*service-account*.json
+firebase-adminsdk*.json

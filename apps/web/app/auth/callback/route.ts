@@ -1,7 +1,9 @@
+import {firebaseBackend} from '../../../lib/firebase/config';
 import { NextResponse } from 'next/server';
 import { serverSupabase } from '../../../lib/auth/server';
 import { appOrigin,authConfigured,safeAuthDestination } from '../../../lib/auth/config';
 export async function GET(request:Request){
+  if(firebaseBackend())return NextResponse.redirect(appOrigin()+'/login');
   const url=new URL(request.url);
   const code=url.searchParams.get('code');
   if(authConfigured() && code){

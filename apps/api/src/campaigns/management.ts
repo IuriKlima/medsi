@@ -1,5 +1,7 @@
+import {serviceDatabase} from '../platform/service';
+import {databaseConfigured} from '../platform/config';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {createClient} from '@supabase/supabase-js';
+
 import {BadRequestException,Body,Controller,Get,Param,Post,Req,ServiceUnavailableException,UnauthorizedException,UseGuards} from '@nestjs/common';
 import {z} from 'zod';
 import {studentSchema} from '@askadia/contracts';
@@ -15,5 +17,5 @@ export class ManagementController{
 }
 @Controller('integrations/management')
 export class ManagementIngestionController{
- @Post('students') async ingest(@Req() r:{headers:{authorization?:string}},@Body() body:unknown){const auth=r.headers.authorization;if(!auth||!/^Bearer ask_mgmt_[A-Za-z0-9_-]{43}$/.test(auth))throw new UnauthorizedException('Credencial de integração inválida.');const parsed=managementBatchSchema.safeParse(body);if(!parsed.success)throw new BadRequestException('Confira o contrato de alunos da Askadia.');if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SERVICE_ROLE_KEY)throw new ServiceUnavailableException('Recebimento de dados não configurado.');const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});return result(await db.rpc('ingest_management_students',{p_hash:hash(auth.slice(7)),p_event:parsed.data.eventId,p_observed_at:parsed.data.observedAt,p_students:parsed.data.students,p_body_hash:hash(JSON.stringify(parsed.data))}));}
+ @Post('students') async ingest(@Req() r:{headers:{authorization?:string}},@Body() body:unknown){const auth=r.headers.authorization;if(!auth||!/^Bearer ask_mgmt_[A-Za-z0-9_-]{43}$/.test(auth))throw new UnauthorizedException('Credencial de integração inválida.');const parsed=managementBatchSchema.safeParse(body);if(!parsed.success)throw new BadRequestException('Confira o contrato de pacientes da MedSI.');if(!databaseConfigured())throw new ServiceUnavailableException('Recebimento de dados não configurado.');const db=serviceDatabase();return result(await db.rpc('ingest_management_students',{p_hash:hash(auth.slice(7)),p_event:parsed.data.eventId,p_observed_at:parsed.data.observedAt,p_students:parsed.data.students,p_body_hash:hash(JSON.stringify(parsed.data))}));}
 }

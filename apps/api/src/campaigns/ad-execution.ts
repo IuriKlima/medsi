@@ -1,3 +1,4 @@
+import {databaseConfigured} from '../platform/config';
 import {prepareAutomaticPaidPlan} from './ad-plan-preparation';
 import {createHash} from 'node:crypto';
 import {BadRequestException,Body,Controller,Get,Injectable,Param,Post,Req,ServiceUnavailableException,UseGuards,type OnModuleDestroy,type OnModuleInit} from '@nestjs/common';
@@ -11,7 +12,7 @@ import {openChannel} from '../onboarding/channels';
 import {agentModel} from '../ai/models';
 import {adsAccess,googleConfigured,googleToken,serviceDb} from './ads';
 import {adMarker,AdProviderError,CampaignProvider,googleAdRequest,metaAdRequest,type AdProviderContext,type AdRemote,type DurableStep} from './ad-provider';
-export const adsExecutionConfigured=()=>process.env.ADS_EXECUTION_ENABLED==='true'&&Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY&&process.env.SECRETS_ENCRYPTION_KEY);
+export const adsExecutionConfigured=()=>process.env.ADS_EXECUTION_ENABLED==='true'&&Boolean(databaseConfigured()&&process.env.SECRETS_ENCRYPTION_KEY);
 type Job={id:string;company_id:string;plan_id:string;campaign_index:number;provider:'meta'|'google';profile_version:number;revision:number;spec:AdSpec|null;remote:AdRemote;lease_token:string;desired:'run'|'pause'|'cancel';action:'prepare'|'provision'|'activate'|'monitor'|'stop'|'end'|'invalidate';attempts:number;facts:ProfileFacts;proposal:{name:string;investment:number;copy:string;objective:string;audience:string;region:string;creativeBrief:string}};
 type Binding={managerId?:string|null;accountId:string;accountName:string;pageId:string|null;metadata:{scopes?:string[];tasks?:string[];instagramId?:string;expiresAt?:string}|null;cipher:string};
 export function externalDestination(facts:ProfileFacts){const urls=facts.channels?.value?.match(/https:\/\/[^\s<>]+/g)??[];const candidates=urls.filter(v=>{try{const u=new URL(v.replace(/[.,;)]$/,''));return !['instagram.com','facebook.com','wa.me','youtube.com','tiktok.com','google.com'].some(h=>u.hostname===h||u.hostname.endsWith('.'+h))&&!u.username&&!u.password;}catch{return false;}});return candidates.length===1?candidates[0]!.replace(/[.,;)]$/,''):null;}
@@ -19,7 +20,7 @@ async function imageBytes(company:string,id:string){const db=serviceDb();const r
 async function context(job:Job){const binding=result<Binding>(await serviceDb().rpc('ad_execution_context_server',{p_id:job.id,p_token:job.lease_token}));if(job.provider==='meta'){
  const secret=openChannel<{userToken?:string}>(job.company_id,binding.cipher);const access=metaAccess(binding.metadata?.scopes??[],binding.metadata?.instagramId??null,binding.metadata?.tasks??[]);
  if(!access.adsManage||!secret.userToken||binding.metadata?.expiresAt&&Date.parse(binding.metadata.expiresAt)<=Date.now())throw new AdProviderError('authorization','Atualize a conexão Meta com a permissão de gerenciar anúncios.');return {binding,auth:{token:secret.userToken} as AdProviderContext};}
- if(!googleConfigured())throw new AdProviderError('configuration','O acesso Google Ads da Askadia aguarda OAuth e token de desenvolvedor.');
+ if(!googleConfigured())throw new AdProviderError('configuration','O acesso Google Ads da MedSI aguarda OAuth e token de desenvolvedor.');
  const secret=openChannel<{refreshToken:string;managerId?:string}>(job.company_id,binding.cipher);const token=await googleToken({grant_type:'refresh_token',refresh_token:secret.refreshToken});return {binding,auth:{token:token.access_token,managerId:binding.managerId??undefined}};
 }
 async function prepare(job:Job,binding:Binding,auth:AdProviderContext):Promise<AdSpec>{
@@ -65,7 +66,7 @@ export async function runAdExecution(job:Job){
   }
   if(job.action==='activate'){await provider.activate(job.remote,guard);await guard();const observed=await provider.observe(job.remote);const saved=await finish({status:'active',observed});if(!saved)await provider.pause(job.remote);return;}
   const observed=await provider.observe(job.remote);await guard();
-  if(['PAUSED','REMOVED','DELETED','ARCHIVED'].includes(observed.status)){await finish({status:'paused',observed,error:'A campanha foi pausada ou removida na plataforma. A Askadia não a reativará automaticamente.',kind:'external_pause'});return;}
+  if(['PAUSED','REMOVED','DELETED','ARCHIVED'].includes(observed.status)){await finish({status:'paused',observed,error:'A campanha foi pausada ou removida na plataforma. A MedSI não a reativará automaticamente.',kind:'external_pause'});return;}
   await provider.verify(job.remote);await finish({status:'active',observed});
  }catch(e){
   const error=e instanceof AdProviderError?e:new AdProviderError('configuration','Não foi possível concluir. Confira conexões, localização, site e criativo da empresa.');

@@ -4,7 +4,7 @@ import {serverSupabase} from '../../lib/auth/server';
 import {authConfigured} from '../../lib/auth/config';
 import {PurchaseJourney} from '../../components/purchase-journey';
 export const dynamic='force-dynamic';
-export const metadata={title:'Comece sua jornada | Askadia',robots:{index:false,follow:false}};
+export const metadata={title:'Comece sua jornada | MedSI',robots:{index:false,follow:false}};
 export default async function Start({searchParams}:{searchParams:Promise<{empresa?:string}>}){
  if(!authConfigured())redirect('/login?modo=cadastro');const client=await serverSupabase();const {data}=await client.auth.getUser();if(!data.user?.email_confirmed_at)redirect('/login');
  const {empresa}=await searchParams;const companyId=empresa;

@@ -46,7 +46,7 @@ export class DashboardController {
   const input=parse(z.object({filters:dashboardQuerySchema,format:z.enum(['csv','pdf']).default('csv')}).strict(),body);
   const snapshot=await this.read(req,input.filters);
   const id=result(await req.actor.client.rpc('dashboard_record_export',{p_company_id:input.filters.companyId,p_filters:input.filters,p_snapshot:snapshot,p_method:snapshot.methodVersion,p_internal_session:input.filters.access??null}));
-  const rows:unknown[][]=[['Askadia — relatório executivo'],['Empresa',snapshot.company.name],['Período',input.filters.start,input.filters.end],['Fuso',input.filters.timezone],['Canal',input.filters.channel],['Conta',input.filters.account],['Campanha',input.filters.campaign],['Comparação',input.filters.comparison,snapshot.comparison?.start,snapshot.comparison?.end],['Observação da coorte até',input.filters.observationEnd??input.filters.end],['Regime','Caixa realizado'],['Leitura',input.filters.mode],['Método',snapshot.methodVersion],['Gerado em',snapshot.generatedAt],['Auditoria',id],['Atribuição','Evidência informada pela fonte; sem causalidade presumida'],[],['Indicador','Valor','Unidade','Estado','Fórmula','Bases','Fonte','Atualização','Pendência']];
+  const rows:unknown[][]=[['MedSI — relatório executivo'],['Empresa',snapshot.company.name],['Período',input.filters.start,input.filters.end],['Fuso',input.filters.timezone],['Canal',input.filters.channel],['Conta',input.filters.account],['Campanha',input.filters.campaign],['Comparação',input.filters.comparison,snapshot.comparison?.start,snapshot.comparison?.end],['Observação da coorte até',input.filters.observationEnd??input.filters.end],['Regime','Caixa realizado'],['Leitura',input.filters.mode],['Método',snapshot.methodVersion],['Gerado em',snapshot.generatedAt],['Auditoria',id],['Atribuição','Evidência informada pela fonte; sem causalidade presumida'],[],['Indicador','Valor','Unidade','Estado','Fórmula','Bases','Fonte','Atualização','Pendência']];
   for(const m of snapshot.metrics)rows.push([m.label,m.value,m.unit,m.state,m.formula,JSON.stringify(m.bases),m.source,m.updatedAt,m.reason]);
   rows.push([],['Data','Mídia BRL','Novos clientes','Receita atribuída BRL']);for(const point of snapshot.series)rows.push([point.date,point.mediaBRL,point.customers,point.attributedRevenueBRL]);
   rows.push([],['Fontes e cobertura']);for(const source of snapshot.sources)rows.push([source.source,source.domain,source.start,source.end,source.complete?'Declarada completa':'Parcial',source.updatedAt,source.note]);
@@ -64,6 +64,6 @@ export class DashboardController {
 }
 @Module({
  controllers:[DashboardController],
- providers:[AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({url:process.env.SUPABASE_URL,key:process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY})}],
+ providers:[AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({provider:process.env.DATABASE_PROVIDER,url:process.env.SUPABASE_URL,key:process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY})}],
 })
 export class DashboardModule {}

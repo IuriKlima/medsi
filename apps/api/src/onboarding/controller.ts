@@ -1,3 +1,4 @@
+import {loadCurriculum} from './curriculum';
 import {agentModel} from '../ai/models';
 import {evolutionChats} from '../inbox/evolution';
 import {preferredContactName,meaningfulContactName} from '../inbox/contact-name';
@@ -10,7 +11,7 @@ import { result } from '../identity/service';
 import { extractWebsite,publicWebsiteUrl,interpret,interpreterConfigured,places } from './providers';
 const uuid=(v:string)=>{const parsed=z.uuid().safeParse(v);if(!parsed.success)throw new BadRequestException('Identificador inválido.');return parsed.data;};
 function parse<T>(schema:z.ZodType<T>,body:unknown):T{const r=schema.safeParse(body);if(!r.success)throw new BadRequestException('Revise os dados enviados.');return r.data;}
-async function snapshot(actor:AuthenticatedActor,id:string){
+export async function snapshot(actor:AuthenticatedActor,id:string){
  const state=result<OnboardingSnapshot>(await actor.client.rpc('company_onboarding_read',{p_company_id:id}));
  const purchase=result<PurchaseState>(await actor.client.rpc('company_purchase_state',{p_company_id:id}));
  const enabled=purchase.aiAllowed&&interpreterConfigured();
@@ -40,9 +41,9 @@ export class OnboardingController {
  }
  @Post('companies/:id/places') async search(@Req() req:AuthRequest,@Param('id') id:string,@Body() body:unknown):Promise<PlaceSearchResult>{
   uuid(id);const input=parse(z.object({requestId:z.uuid(),kind:z.enum(['location','competitors']),radius:z.number().int().min(500).max(20000).default(3000)}).strict(),body);await capability(req.actor,id,'marketing.write');const current=await snapshot(req.actor,id);
-  if(current.state.facts.name?.status!=='provided'||current.state.facts.city?.status!=='provided')throw new BadRequestException('Informe primeiro o nome da academia e a cidade.');
-  if(input.kind==='competitors'&&!current.state.location_confirmed)throw new BadRequestException('Confirme o local da academia antes de pesquisar os concorrentes.');
-  const fallback={status:'unconfigured' as const,places:[],radius:null,message:'A pesquisa automática de endereços ainda não está ativada na Askadia. Abra o Google Maps para conferir o estabelecimento e informe o endereço na conversa.'};
+  if(current.state.facts.name?.status!=='provided'||current.state.facts.city?.status!=='provided')throw new BadRequestException('Informe primeiro o nome da clínica e a cidade.');
+  if(input.kind==='competitors'&&!current.state.location_confirmed)throw new BadRequestException('Confirme o local da clínica antes de pesquisar os concorrentes.');
+  const fallback={status:'unconfigured' as const,places:[],radius:null,message:'A pesquisa automática de endereços ainda não está ativada na MedSI. Abra o Google Maps para conferir o estabelecimento e informe o endereço na conversa.'};
   if(!process.env.GOOGLE_PLACES_SERVER_KEY)return fallback;
   if(!await reserve(req.actor,id,input.requestId,'places'))return {...fallback,status:'unavailable',message:'O limite de pesquisas desta empresa ou conta foi atingido. Você pode conferir no Google Maps e continuar manualmente.'};
   try{const found=await places(current,input.kind,input.radius);await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'places',p_outcome:'completed'});return found;}catch{await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'places',p_outcome:'failed'});return {...fallback,status:'unavailable',message:'A pesquisa falhou. Nenhum resultado foi inventado. Você pode informar os dados manualmente.'};}
@@ -62,7 +63,7 @@ export class OnboardingController {
   if(!process.env.OPENAI_API_KEY)throw new ServiceUnavailableException('Configure OpenAI e o modelo de estratégia no servidor.');
   const brief=result<{facts:OnboardingSnapshot['state']['facts'];competitorEvidence?:unknown}>(await req.actor.client.rpc('start_company_strategy',{p_company_id:id,p_request_id:input.requestId}));
   let output:Awaited<ReturnType<typeof generateStrategy>>;
-  try{const month=input.month??new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()).slice(0,7);result(await req.actor.client.rpc('strategy_feedback',{p_company_id:id,p_request:input.requestId,p_feedback:input.feedback}));output=await generateStrategy(brief.facts,input.feedback,month,brief.competitorEvidence);}catch{
+  try{const month=input.month??new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()).slice(0,7);result(await req.actor.client.rpc('strategy_feedback',{p_company_id:id,p_request:input.requestId,p_feedback:input.feedback}));output=await generateStrategy(brief.facts,input.feedback,month,brief.competitorEvidence,await loadCurriculum(req.actor.client,id,brief.facts));}catch{
    await req.actor.client.rpc('finish_company_strategy',{p_company_id:id,p_request_id:input.requestId,p_output:null,p_model:agentModel('strategy'),p_response_id:null});await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'strategy',p_outcome:'failed'});throw new ServiceUnavailableException('A geração não retornou uma proposta válida. O briefing continua salvo. Tente novamente.');
   }
   const saved=result(await req.actor.client.rpc('finish_company_strategy',{p_company_id:id,p_request_id:input.requestId,p_output:output.output,p_model:output.model,p_response_id:output.responseId}));

@@ -16,9 +16,9 @@ export async function provisionSiteDomain(company:string,host:string){
 export async function provisionPublishedSite(company:string,slug:string|null,custom:{hostname:string;dns_verified_at:string|null}|null){
  const platform=process.env.SITES_PLATFORM_DOMAIN||new URL(process.env.WEB_ORIGIN!).hostname;
  const hosts=[...(slug?[siteDomain(slug+'.'+platform)]:[]),...(custom?.dns_verified_at?[siteDomain(custom.hostname)]:[])];
- if(!hosts.length)return {status:custom?'pending_verification':'not_needed',message:custom?'Site publicado no link da Askadia. Verifique o DNS do domínio próprio para ativar seu endereço.':'Site publicado no link da Askadia. Você pode escolher um subdomínio em Domínio e endereço.'};
- if(!hostingConfigured())return {status:'pending_configuration',message:'Site publicado no link da Askadia. A ativação do endereço aguarda a configuração da hospedagem pela equipe Askadia.'};
+ if(!hosts.length)return {status:custom?'pending_verification':'not_needed',message:custom?'Site publicado no link da MedSI. Verifique o DNS do domínio próprio para ativar seu endereço.':'Site publicado no link da MedSI. Você pode escolher um subdomínio em Domínio e endereço.'};
+ if(!hostingConfigured())return {status:'pending_configuration',message:'Site publicado no link da MedSI. A ativação do endereço aguarda a configuração da hospedagem pela equipe MedSI.'};
  const results=await Promise.allSettled([...new Set(hosts)].map(host=>provisionSiteDomain(company,host)));
- if(results.some(r=>r.status==='rejected'))return {status:'failed',message:'Site publicado no link da Askadia. Não foi possível ativar todos os endereços agora; tente Publicar novamente. O conteúdo publicado foi preservado.'};
+ if(results.some(r=>r.status==='rejected'))return {status:'failed',message:'Site publicado no link da MedSI. Não foi possível ativar todos os endereços agora; tente Publicar novamente. O conteúdo publicado foi preservado.'};
  return {status:'requested',message:'Site publicado. Os endereços foram cadastrados na hospedagem e o HTTPS foi solicitado. O acesso depende da propagação do DNS e da emissão do certificado.'};
 }

@@ -1,14 +1,16 @@
-# Askadia · Marketing Fitness IA
+# MedSI · Sua clínica em sintonia
 
-Plataforma em desenvolvimento para organizar o marketing de negócios fitness, com identidade visual neutra, onboarding em conversa, estratégia, calendário editorial e produção assistida por IA.
+Plataforma de marketing e atendimento administrativo para médicos, consultórios e clínicas, com onboarding em conversa, estratégia, calendário editorial, CRM e assistência por IA. Identidade em petróleo, menta e marfim.
+
+A direção MedSI de 29/09/2026 substitui o foco fitness e a marca anteriores. Veja [análise e entrega MedSI](docs/medsi-identidade-2026-09-29.md) e [progresso atualizado](docs/progress.md) para o estado atual; os registros abaixo descrevem etapas históricas.
 
 ## Executar localmente
 
 Requisitos: Node.js 22.12+ e pnpm 10.33.0.
 
 ```powershell
-pnpm install --frozen-lockfile
-Copy-Item .env.example .env
+pnpm --store-dir .pnpm-store install --frozen-lockfile
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 pnpm dev
 ```
 
@@ -18,8 +20,10 @@ O site público fica na raiz. O sistema usa `/login` e direciona para os context
 
 ## Implementação atual
 
-- Identidade Supabase, workspaces, empresas, convites e permissões por contexto.
-- Onboarding persistido, fatos estruturados, confirmação e versões do perfil da empresa.
+- Firestore Native selecionado: banco confirmado, namespace e catálogo inicializados, regras privadas aplicadas. Identidade e onboarding portados; migração dos demais fluxos pendente e produção bloqueada. [Estado do Firestore](docs/medsi-firestore-2026-09-29.md).
+- Onboarding médico por etapas: CNPJ, endereço confirmado, especialidade, currículo/história, logo, fotos e site; fatos, revisão e versões persistidos.
+A conta administrativa local já foi configurada e leu o Firestore real. Authentication por E-mail/senha está ativo e o domínio local foi autorizado; Storage ainda precisa de configuração. Os módulos listados a seguir têm implementações preservadas do provedor anterior e aguardam adaptação ao Firestore:
+
 - Estratégia OpenAI com 12 ideias; aprovação seguida do detalhamento do calendário editorial.
 - Designer Gemini com briefing e materiais privados selecionados, controle de revisão e aprovação.
 - Conexões por empresa: fluxo OAuth Meta e criação/reutilização de instância Evolution com QR code e consulta de status.
@@ -29,6 +33,8 @@ O site público fica na raiz. O sistema usa `/login` e direciona para os context
 Existência de código não significa homologação externa. A última tentativa real do Gemini retornou limite de quota. OAuth Meta, publicação, insights e atendimento automático por webhook Evolution ainda precisam de implementação/configuração e validação. A caixa de entrada já consulta o histórico real da Evolution; sugestões de IA/fluxo são revisadas pelo atendente antes de enviar. Parear WhatsApp não ativa envio ou triagem automática. Vídeos recebem roteiro; o envio do arquivo final ainda está pendente.
 
 ## Banco e configuração
+
+A configuração atual é [Firestore na MedSI](docs/medsi-firestore-2026-09-29.md). A proposta anterior de [SQL Connect](docs/medsi-firebase-2026-09-29.md) foi substituída pela escolha do proprietário. O fluxo médico está em [onboarding e estratégia regional](docs/medsi-onboarding-medico-2026-09-29.md). No Firestore foram inicializados três documentos de configuração/catálogo e aplicadas regras privadas; não houve deploy da aplicação nem importação dos dados legados.
 
 O SQL versionado está em `supabase/migrations`. Consulte [identidade](docs/identity-setup.md), [jornada](docs/jornada-contrato.md) e [calendário e conexões](docs/calendario-conexoes.md). Confira as migrações já instaladas antes de aplicar atualizações: não reaplique indiscriminadamente arquivos em uma base existente. O Git não contém backup de dados do Supabase.
 
@@ -44,9 +50,9 @@ Executa lint, tipos, testes e builds. A CI em `.github/workflows/ci.yml` executa
 
 ## Hospedagem no Easypanel
 
-Este commit versiona o projeto; não executa deploy. A configuração de produção ainda precisa de revisão: API e worker recusam `NODE_ENV=production`, os serviços escutam em loopback e não há Dockerfile de implantação. Não contorne esses bloqueios usando desenvolvimento em um servidor público.
+O projeto não executa deploy automaticamente. Antes de publicar, revisar a configuração de produção dos serviços, rede, URLs, segredos, credenciais administrativas, migrações e homologação das integrações. A configuração pública Firebase não substitui essas etapas.
 
-Antes da publicação, preparar os serviços e a rede do container, configurar os segredos no Easypanel, validar banco e integrações, configurar DNS/HTTPS de `askadia.com.br` e conferir os callbacks públicos. Não incluir `.env`, dados locais ou dependências no repositório.
+Antes da publicação, preparar os serviços e a rede do container, configurar os segredos no Easypanel, validar banco e integrações, configurar DNS/HTTPS do domínio aprovado e conferir os callbacks públicos. Não incluir `.env`, dados locais ou dependências no repositório.
 
 ## Estrutura e documentação
 

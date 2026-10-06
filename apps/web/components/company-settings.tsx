@@ -14,7 +14,7 @@ export function CompanySettings({company,tab,actions,manageTeam,userId,profile}:
  const tabs=allowedSettingsTabs(actions,manageTeam),owner=actions.includes('billing.manage');
  if(!tabs.some(value=>value.id===tab))return <p role="alert">Seu perfil não permite abrir esta configuração.</p>;
  return <section className={styles.settings}>
-  <p className={styles.intro}>Gerencie a marca, os canais, a equipe e o plano de {company.name}.</p>
+  <p className={styles.intro}>Gerencie o perfil, a marca, os canais, a equipe e o plano de {company.name}.</p>
   <nav className={styles.tabs} aria-label="Abas de configurações">{tabs.map(value=><Link key={value.id} id={'settings-'+value.id} href={companySettingsHref(company.id,value.id)} aria-current={tab===value.id?'page':undefined} scroll={false}>{value.label}</Link>)}</nav>
   <div key={company.id+':'+tab} className={styles.panel} role="region" aria-labelledby={'settings-'+tab}>
    {tab==='perfil'&&<OnboardingChat companyId={company.id} readOnly={!actions.includes('marketing.write')} summaryOnly/>}

@@ -1,4 +1,5 @@
 'use client';
+import {MedicalOnboarding,type MedicalOnboardingProps} from './medical-onboarding';
 import {HelpChat} from './help-chat';
 import Link from 'next/link';
 import {CompanyChannels} from './company-channels';
@@ -11,7 +12,7 @@ import { journeyApi,JourneyError } from '../lib/journey-api';
 import styles from './journey.module.css';
 import chat from './onboarding-chat.module.css';
 import {BrandMark,BrandWordmark} from './brand';
-export function OnboardingChat({companyId,readOnly=false,summaryOnly=false,immersive=false,onExit,onConfirmed}:{companyId:string;readOnly?:boolean;summaryOnly?:boolean;immersive?:boolean;onExit?:()=>void;onConfirmed?:(data:OnboardingSnapshot)=>void}){
+export function LegacyOnboardingChat({companyId,readOnly=false,summaryOnly=false,immersive=false,onExit,onConfirmed}:{companyId:string;readOnly?:boolean;summaryOnly?:boolean;immersive?:boolean;onExit?:()=>void;onConfirmed?:(data:OnboardingSnapshot)=>void}){
  const [uploadProgress,setUploadProgress]=useState('');
  const [data,setData]=useState<OnboardingSnapshot|null>(null),[text,setText]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[showSummary,setShowSummary]=useState(summaryOnly);
  const [website,setWebsite]=useState(''),[websiteResult,setWebsiteResult]=useState<{message:string;facts:{key:ProfileKey;value:string;source:string}[]}|null>(null),[readingWebsite,setReadingWebsite]=useState(false);
@@ -51,10 +52,10 @@ export function OnboardingChat({companyId,readOnly=false,summaryOnly=false,immer
  </>;
  const materials=<>{data.attachments.length>0&&<div className={styles.attachments}><strong>Materiais da empresa</strong>{data.attachments.map(a=><a key={a.id} href={'/api/onboarding/companies/'+companyId+'/attachments/'+a.id} target="_blank" rel="noreferrer"><Paperclip size={13}/>{a.name}</a>)}</div>}</>;
  const attachmentInput=<input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf" disabled={busy||readOnly} aria-label="Anexar materiais da empresa" onChange={e=>{const files=Array.from(e.target.files??[]);if(files.length)void upload(files);e.target.value='';}}/>;
- return <section ref={viewport} className={immersive?chat.immersive:styles.onboarding} aria-label="Conversa de cadastro com a Askadia">
+ return <section ref={viewport} className={immersive?chat.immersive:styles.onboarding} aria-label="Conversa de cadastro com a MedSI">
   {immersive&&<aside className={chat.sidebar}>
-   <Link href="/" className={chat.brand} aria-label="Askadia, início"><BrandWordmark/></Link>
-   <div className={chat.selectedConversation}><span><MessageCircle size={20}/></span><div><strong>Vamos conhecer seu negócio</strong><small>{data.state.facts.name?.value??'Sua conversa com a Askadia'}</small></div></div>
+   <Link href="/" className={chat.brand} aria-label="MedSI, início"><BrandWordmark/></Link>
+   <div className={chat.selectedConversation}><span><MessageCircle size={20}/></span><div><strong>Vamos conhecer seu negócio</strong><small>{data.state.facts.name?.value??'Sua conversa com a MedSI'}</small></div></div>
    <p className={chat.sidebarLabel}>NOSSA CONVERSA</p>
    <ol className={chat.stages} aria-label="Etapas do cadastro">{stepNames.map((name,i)=><li key={name} aria-current={stage===i?'step':undefined} data-done={stage>i}><span>{stage>i?<Check size={14}/>:i+1}</span><div>{name}{stage===i&&<small>Estamos aqui</small>}</div></li>)}</ol>
    <div className={chat.sidebarBottom}><p><CheckCheck size={17}/>Suas respostas ficam salvas</p><small>Depois da conversa, você escolhe seu plano e revisa a estratégia.</small><Link href="/entrada"><UserRound size={16}/>Minha conta</Link></div>
@@ -62,7 +63,7 @@ export function OnboardingChat({companyId,readOnly=false,summaryOnly=false,immer
   <div className={immersive?chat.main:undefined}>
    {immersive?<header className={chat.header}>
     {onExit&&<button className={chat.iconButton} onClick={onExit} aria-label="Voltar ao próximo passo"><ArrowLeft size={20}/></button>}
-    <span className={chat.avatar}><BrandMark/></span><div className={chat.contact}><h1>Askadia</h1><p>{busy?'Salvando suas informações…':showSummary?'Revise as informações da sua empresa':'Seu assistente de marketing'}</p></div>
+    <span className={chat.avatar}><BrandMark/></span><div className={chat.contact}><h1>MedSI</h1><p>{busy?'Salvando suas informações…':showSummary?'Revise as informações da sua empresa':'Seu assistente de marketing'}</p></div>
     <HelpChat companyId={companyId} aboveComposer/><button className={chat.reviewButton} aria-label={showSummary?'Ver conversa':'Revisar perfil'} onClick={()=>setShowSummary(v=>!v)} aria-pressed={showSummary}><ClipboardList size={18}/><span>{showSummary?'Ver conversa':'Revisar perfil'}</span></button><Link className={chat.accountButton} href="/entrada" aria-label="Minha conta"><UserRound size={20}/></Link>
    </header>:<><header className={styles.chatHeader}><div><p className="page-eyebrow">CONHECER MINHA EMPRESA</p><h1>{data.state.facts.name?.value??'Vamos cadastrar sua empresa.'}</h1><p>Uma conversa para colocar seu marketing em movimento.</p></div><Button variant="outline" onClick={()=>setShowSummary(v=>!v)}>{showSummary?'Ver conversa':'Revisar perfil'}</Button></header><ol className={styles.steps} aria-label="Etapas do cadastro">{stepNames.map((name,i)=><li key={name} aria-current={stage===i?'step':undefined} data-done={stage>i}>{stage>i?<Check size={13}/>:i+1}<span>{name}</span></li>)}</ol></>}
    {immersive&&<div className={chat.mobileStage}>Etapa {Math.min(stage+1,5)} de 5 · {stepNames[Math.min(stage,4)]}<span>{stage===3?completed+' de '+interviewKeys.length+' assuntos':'Respostas salvas'}</span></div>}
@@ -71,8 +72,8 @@ export function OnboardingChat({companyId,readOnly=false,summaryOnly=false,immer
      <p className={immersive?chat.systemMessage:styles.provider}>{data.provider.message}</p>
      {showSummary?<><h2 className={chat.summaryTitle}>Seu negócio, do seu jeito</h2><p className={styles.provider}>Confira o que conversamos. Você pode corrigir qualquer informação.</p><ProfileSummary facts={data.state.facts} disabled={busy||readOnly} onSave={(key,fact)=>send('Atualização de '+labels[key],'edit',{[key]:fact})}/>{materials}{data.state.facts.placeId?.value&&<p className={styles.provider}><a href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(data.state.facts.name?.value??'Estabelecimento')+'&query_place_id='+encodeURIComponent(data.state.facts.placeId.value)} target="_blank" rel="noreferrer">Ver local selecionado no Google Maps</a></p>}{data.state.facts.competitorPlaceIds?.value&&<div className={styles.attachments}>{data.state.facts.competitorPlaceIds.value.split('\n').map((id,i)=><a key={id} href={'https://www.google.com/maps/search/?api=1&query=Estabelecimento&query_place_id='+encodeURIComponent(id)} target="_blank" rel="noreferrer">Concorrente selecionado {i+1}</a>)}</div>}</>:<>
       <div className={immersive?chat.messages:styles.messages} role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions text">
-       {history.map(m=><article key={m.id} className={m.role==='user'?styles.userMessage:styles.agentMessage}><small>{m.role==='user'?'Você':'Askadia'}</small><p>{m.body}</p>{immersive&&m.role==='user'&&<span className={chat.saved}><CheckCheck size={14}/><span className="sr-only">Resposta salva</span></span>}</article>)}
-       <div ref={end}/><article className={styles.agentMessage}><small>Askadia</small><p>{includesQuestion?lastMessage.body:data.question}</p></article>
+       {history.map(m=><article key={m.id} className={m.role==='user'?styles.userMessage:styles.agentMessage}><small>{m.role==='user'?'Você':'MedSI'}</small><p>{m.body}</p>{immersive&&m.role==='user'&&<span className={chat.saved}><CheckCheck size={14}/><span className="sr-only">Resposta salva</span></span>}</article>)}
+       <div ref={end}/><article className={styles.agentMessage}><small>MedSI</small><p>{includesQuestion?lastMessage.body:data.question}</p></article>
       </div>
       {active&&<div className={immersive?chat.tools:undefined}>{tools}</div>}
       {materials}
@@ -105,3 +106,5 @@ export function ProfileSummary({facts,disabled=true,onSave}:{facts:ProfileFacts;
  const [editing,setEditing]=useState<ProfileKey|null>(null),[value,setValue]=useState(''),[status,setStatus]=useState<FactInput['status']>('provided');
  return <div className={styles.summary}>{profileKeys.filter(k=>k!=='placeId'&&k!=='competitorPlaceIds').map(key=><article key={key}><div className={styles.cardHeading}><h3>{labels[key]}</h3>{!disabled&&<button onClick={()=>{setEditing(key);setValue(facts[key]?.value??'');setStatus(facts[key]?.status??'provided');}}>Corrigir</button>}</div>{editing===key?<form className="form" onSubmit={async e=>{e.preventDefault();const saved=await onSave?.(key,{value:status==='provided'?value:null,status});if(saved)setEditing(null);}}><label className="sr-only" htmlFor={'edit-'+key}>{labels[key]}</label><textarea id={'edit-'+key} value={value} onChange={e=>setValue(e.target.value)} maxLength={['name','city','businessType'].includes(key)?100:6000} required={status==='provided'} disabled={disabled||status!=='provided'}/><select aria-label={'Situação de '+labels[key]} value={status} onChange={e=>setStatus(e.target.value as FactInput['status'])}><option value="provided">Informado</option><option value="unknown">Não sei / não tenho</option><option value="deferred">Responder depois</option></select><div className="row"><Button size="small" disabled={disabled} type="submit">Salvar correção</Button><Button size="small" variant="ghost" onClick={()=>setEditing(null)} type="button">Cancelar</Button></div></form>:<><p>{facts[key]?.status==='provided'?facts[key]?.value:facts[key]?.status==='unknown'?'Declarado desconhecido ou não disponível':facts[key]?.status==='deferred'?'Responder depois':'Não informado'}</p>{facts[key]&&<small>Origem: {facts[key]?.source==='existing'?'cadastro existente':facts[key]?.source==='assistant_suggestion'?'interpretação a conferir':'informado na conversa'}</small>}</>}</article>)}</div>;
 }
+
+export function OnboardingChat(props:MedicalOnboardingProps){return <MedicalOnboarding key={props.companyId} {...props}/>;}

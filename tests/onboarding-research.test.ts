@@ -27,7 +27,7 @@ describe('Persistent onboarding research',()=>{
  afterAll(async()=>{await db?.close();});
 
  it('asks name then city and searches location before asking business type',async()=>{
-  await as(owner);const initial=await scalar<{stages:{data:unknown}[]}>('select public.read_marketing_journey($1)',[company]);expect(Array.isArray(initial.stages[0]!.data)).toBe(true);expect((await read()).question).toContain('nome do negócio');const name=await save(guidedAnswers('identity','Minha Academia'));expect(name.step).toBe('city');expect(name.question).toContain('cidade');const city=await save(guidedAnswers('city','Varginha, MG'));expect(city.step).toBe('location');expect(onboardingStep(city.state)).toBe(city.step);
+  await as(owner);const initial=await scalar<{stages:{data:unknown}[]}>('select public.read_marketing_journey($1)',[company]);expect(Array.isArray(initial.stages[0]!.data)).toBe(true);expect((await read()).question).toContain('nome da sua clínica');const name=await save(guidedAnswers('identity','Minha Academia'));expect(name.step).toBe('city');expect(name.question).toContain('cidade');const city=await save(guidedAnswers('city','Varginha, MG'));expect(city.step).toBe('location');expect(onboardingStep(city.state)).toBe(city.step);
   await save({placeId:fact('own_place'),businessType:fact('Academia'),address:fact('Centro, Varginha')},'confirm_location');
  });
  it('persists confirmed competitor names and place IDs atomically, with replay and stale-write protection',async()=>{

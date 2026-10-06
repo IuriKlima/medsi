@@ -1,20 +1,20 @@
-/** Shared vector interpretation of the brand direction supplied on 25 September. */
+/** Vector interpretation of the MedSI reference supplied on 29 September 2026. */
 export function BrandMark({className = ''}:{className?:string}) {
-  return <svg className={`askadia-symbol ${className}`} viewBox="0 0 64 64" fill="currentColor" aria-hidden="true" focusable="false">
-    <path d="M24.5 10.1c3.3-5.8 11.7-5.8 15 0l22 38.1c3.3 5.8-.9 13-7.5 13h-7.1a8.7 8.7 0 0 1-7.5-4.3L25.8 33.3a9.2 9.2 0 0 0-8-4.6H13.7z"/>
-    <path d="M12 32.5h10.3c5.6 0 9 6.1 6.2 10.9L20.7 57a8.4 8.4 0 0 1-7.2 4.2H8.2c-6.4 0-10.4-7-7.2-12.5z"/>
+  return <svg className={`medsi-symbol ${className}`} viewBox="0 0 100 68" fill="none" aria-hidden="true" focusable="false">
+    <path className="medsi-mark-base" d="M3 49 25 12C32 0 46 0 54 13l24 39c4 7 1 14-8 14H59c-8 0-14-4-18-11L35 44c-1-2-3-2-4 0L21 60C12 75-6 65 3 49Z"/>
+    <path className="medsi-mark-mint" d="m48 37 12-18c7-10 20-9 25 2l14 31c6 15-14 24-21 10l-8-16c-1-2-3-2-4 0l-4 6c-10 15-27 1-18-11Z"/>
   </svg>;
 }
 
 export function BrandWordmark() {
-  return <span className="askadia-wordmark"><BrandMark/><span>askadia</span></span>;
+  return <span className="medsi-wordmark" aria-label="MedSI"><BrandMark/><span>Med<span className="medsi-wordmark-accent">SI</span></span></span>;
 }
 
-/** Decorative ribbon, based on the rounded angles in the Askadia symbol. */
+/** Flowing conversation lines from the MedSI visual reference. */
 export function BrandContours({className = ''}:{className?:string}) {
-  return <svg className={`askadia-contours ${className}`} viewBox="0 0 800 600" fill="none" aria-hidden="true" focusable="false">
-    <path d="M-90 420 198 94Q223 66 264 66H445Q486 66 509 101L704 399Q725 432 765 432H880"/>
-    <path d="M-90 514 196 189Q222 160 263 160H396Q437 160 460 196L655 492Q677 525 718 525H880"/>
-    <path d="M632-80V93Q632 131 654 164L719 261Q741 293 782 293H880"/>
+  return <svg className={`medsi-contours ${className}`} viewBox="0 0 800 600" fill="none" aria-hidden="true" focusable="false">
+    <path d="M-80 340C130 185 220 520 410 385S680 220 870 280"/>
+    <path d="M-80 590C170 580 270 560 415 440S650 320 870 360"/>
+    <path d="M600-60c0 130 105 120 105 215S580 240 630 310"/>
   </svg>;
 }

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const companySchema = z.object({
   id: z.uuid(), name: z.string().trim().min(2).max(100),
-  segment: z.enum(['Academia', 'Estúdio', 'Outro']),
+  segment: z.enum(['Clínica', 'Consultório médico', 'Academia', 'Estúdio', 'Outro']),
   city: z.string().trim().max(100).default(''),
   timezone: z.string().default('America/Sao_Paulo'), status: z.literal('draft'),
 });
@@ -94,3 +94,11 @@ export * from './commerce';
 export * from './support';
 
 export * from './journey-progress';
+
+export function localStageLabel(stage:string){return stage==='Visita agendada'?'Consulta agendada':stage==='Matriculado'?'Conversão confirmada':stage;}
+
+export * from './medical-intake';
+
+export * from './regional-audience';
+export * from './regional-topics';
+export * from './regional-map';

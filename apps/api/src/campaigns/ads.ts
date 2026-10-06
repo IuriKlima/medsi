@@ -1,11 +1,12 @@
-import {createClient} from '@supabase/supabase-js';
+import {serviceDatabase} from '../platform/service';
+
 import {BadRequestException,ForbiddenException,ServiceUnavailableException} from '@nestjs/common';
 import {z} from 'zod';
 import {AuthRequest} from '../identity/auth';
 import {result} from '../identity/service';
 import {openChannel} from '../onboarding/channels';
 import {metaContext,metaGraph,type MetaCollection} from '../inbox/meta';
-export function serviceDb(){if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SERVICE_ROLE_KEY)throw new ServiceUnavailableException('Cofre de integrações indisponível.');return createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});}
+export const serviceDb=serviceDatabase;
 export async function adsAccess(r:AuthRequest,company:string,action='marketing.read'){if(!z.uuid().safeParse(company).success)throw new BadRequestException();const cap=result<{actions:string[]}>(await r.actor.client.rpc('company_capabilities',{p_company_id:company}));if(!cap.actions.includes(action))throw new ForbiddenException();return cap;}
 export type AdConnection={provider:'google'|'meta';status:string;account_id:string|null;name:string;source_page:string|null;cipher:string|null;login_customer_id?:string|null};
 export async function credentials(r:AuthRequest,company:string,provider:'google'|'meta',write?:Record<string,unknown>){await adsAccess(r,company,write?'billing.manage':'marketing.read');return result<AdConnection|null>(await serviceDb().rpc('ad_credentials_server',{p_company_id:company,p_actor:r.actor.id,p_provider:provider,p_write:write??null}));}

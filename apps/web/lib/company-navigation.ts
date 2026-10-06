@@ -24,6 +24,6 @@ export function companyNavigation(actions:readonly string[],manageTeam=false){
   {title:'Aquisição',items:actions.includes('crm.read')?[['crm','CRM'],['atendimento','Caixa de entrada']]:[]},
   {title:'Campanhas',items:[['campanhas','Campanhas']]},
   {title:'Planejamento',items:[['preparacao','Preparação'],['estrategia','Estratégia'],['concorrentes','Concorrentes']]},
-  {title:'Configurações',items:allowedSettingsTabs(actions,manageTeam).length?[['configuracoes','Configurações']]:[]},
+  {title:'Conta',items:allowedSettingsTabs(actions,manageTeam).length?[['configuracoes','Minha conta']]:[]},
  ].filter(group=>group.items.length);
 }

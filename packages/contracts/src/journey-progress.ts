@@ -3,10 +3,10 @@ import type {InstagramWatch} from './instagram';
 export type StrategyBrief={id:string;status:string;profile_version:number;generation:number;output:GeneratedStrategy|null;created_at:string;feedback?:string};
 export type JourneyStage={stage:number;basis:string;approved:boolean;approvedAt:string|null;data:unknown};
 export type PreparationProgress={status:string;stage?:string;error:string|null};
-export type MarketingJourney={profileVersion:number;confirmed:boolean;canApprove:boolean;competitorReview?:{basis:string;watches:InstagramWatch[]};stages:JourneyStage[];strategy?:StrategyBrief|null;preparation?:{available:boolean;content:PreparationProgress|null;recommendations:PreparationProgress|null}};
+export type MarketingJourney={profileVersion:number;confirmed:boolean;canApprove:boolean;regionalAvailable?:boolean;competitorReview?:{basis:string;watches:InstagramWatch[]};stages:JourneyStage[];strategy?:StrategyBrief|null;preparation?:{available:boolean;content:PreparationProgress|null;recommendations:PreparationProgress|null}};
 export function stageReady(stage:JourneyStage|undefined,strategy?:StrategyBrief|null):boolean{
  if(!stage)return false;
- if(stage.stage===1)return true;
+ if(stage.stage===1){const data=stage.data as {regional?:{status?:string}}|null;return data?.regional?data.regional.status==='ready':true;}
  if(stage.stage===2){
   const data=stage.data as {id?:string;generation?:number;output?:unknown;analysisCurrent?:boolean}|null;
   return Boolean(data?.output&&data.analysisCurrent!==false&&strategy?.output&&['review','approved'].includes(strategy.status)&&strategy.id===data.id&&strategy.generation===data.generation);

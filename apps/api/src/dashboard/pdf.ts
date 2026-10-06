@@ -12,7 +12,7 @@ export function executivePdf(rows:unknown[][]):Buffer{
  for(const [index,page] of pages.entries()){
   const pageId=objects.length+1,contentId=pageId+1;ids.push(pageId);
   objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents '+contentId+' 0 R >>');
-  const stream='BT /F1 8 Tf 42 792 Td 14 TL '+page.map((line,i)=>(i?'T* ':'')+'('+escape(line)+') Tj').join('\n')+' ET\nBT /F1 8 Tf 42 32 Td (Askadia - documento privado - '+(index+1)+' / '+pages.length+') Tj ET';
+  const stream='BT /F1 8 Tf 42 792 Td 14 TL '+page.map((line,i)=>(i?'T* ':'')+'('+escape(line)+') Tj').join('\n')+' ET\nBT /F1 8 Tf 42 32 Td (MedSI - documento privado - '+(index+1)+' / '+pages.length+') Tj ET';
   objects.push('<< /Length '+Buffer.byteLength(stream,'latin1')+' >>\nstream\n'+stream+'\nendstream');
  }
  objects[1]='<< /Type /Pages /Count '+pages.length+' /Kids ['+ids.map(id=>id+' 0 R').join(' ')+'] >>';

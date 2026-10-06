@@ -7,7 +7,7 @@ import type {InboxMessage} from '@askadia/contracts';
 import {journeyApi} from '../lib/journey-api';
 import s from './customer-history.module.css';
 type History={contact:{name:string;phone_e164:string|null;email:string|null;created_at:string};opportunities:{id:string;stage:string;interest:string}[];thread:string|null;warning:string;hasMore:boolean;messages:InboxMessage[];metrics:{firstAvailableAt:string|null;firstResponseMs:number|null;averageResponseMs:number|null;responseCount:number;awaitingSince:string|null;lastInbound:InboxMessage|null;lastOutbound:InboxMessage|null};conversations:{id:string;triage_summary:string|null}[];notes:{id:string;body:string;created_at:string}[];stages:{id:string;stage:string;reason:string;created_at:string}[]};
-const stages:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Visita agendada',attended:'Compareceu',enrolled:'Matriculado',lost:'Perdido'};
+const stages:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Consulta agendada',attended:'Compareceu',enrolled:'Conversão confirmada',lost:'Perdido'};
 const date=(v:string|null)=>v?new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'Não disponível';
 const duration=(v:number|null)=>v===null?'Sem resposta':v<60000?'Menos de 1 min':v<3600000?Math.round(v/60000)+' min':(v/3600000).toFixed(1)+' h';
 export function CustomerHistory({companyId,contactId,close}:{companyId:string;contactId:string;close:()=>void}){

@@ -13,7 +13,13 @@
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run --maxWorkers=2",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "firebase:doctor": "pnpm --filter @askadia/api exec tsx src/platform/doctor-cli.ts",
+    "firebase:sql:check": "pnpm --filter @askadia/api exec tsx src/platform/migrate-cli.ts",
+    "firebase:sql:apply": "pnpm --filter @askadia/api exec tsx src/platform/migrate-cli.ts --apply",
+    "firebase": "node node_modules/firebase-tools/lib/bin/firebase.js",
+    "firebase:firestore:check": "node scripts/bootstrap-firestore.mjs",
+    "firebase:firestore:apply": "node scripts/bootstrap-firestore.mjs --apply"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -22,6 +28,7 @@
     "@types/node": "^22.10.0",
     "concurrently": "^9.2.0",
     "eslint": "^9.39.0",
+    "firebase-tools": "^15.32.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.48.0",
     "vitest": "^3.2.0"

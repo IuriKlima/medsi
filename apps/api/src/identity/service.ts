@@ -4,6 +4,8 @@ import type { CompanyRole } from '@askadia/contracts';
 import type { PostgrestError } from '@supabase/supabase-js';
 export function result<T>(value:{data:T|null;error:PostgrestError|null}):T {
   if(value.error){
+    if(value.error.code==='8'||value.error.code==='FIRESTORE_QUOTA_EXCEEDED')throw new ServiceUnavailableException({code:'FIRESTORE_QUOTA_EXCEEDED',message:'O banco de dados atingiu a cota disponível. Aguarde a liberação da cota para continuar.'});
+    if(value.error.code==='FIRESTORE_OPERATION_PENDING')throw new ServiceUnavailableException('Esta funcionalidade ainda está sendo adaptada ao Firestore. Seus dados salvos foram preservados.');
     if(value.error.code==='P0402')throw new HttpException('Escolha e confirme um plano para liberar o processamento com IA desta empresa.',402);
     if(value.error.message==='OAuth state unavailable')throw new ConflictException('A autorização da Meta expirou ou já foi utilizada. Conecte novamente para escolher a Página.');
     if(value.error.code==='42501') throw new ForbiddenException('Você não tem permissão para esta ação ou o acesso não está mais disponível.');
@@ -38,8 +40,10 @@ export class IdentityService {
       c.from('companies').select('*').order('created_at'),
       c.from('workspace_members').select('*').eq('user_id',actor.id),
       c.from('company_members').select('*').eq('user_id',actor.id),
+      c.from('platform_staff').select('user_id,role,active').eq('user_id',actor.id).maybeSingle(),
+      c.from('profiles').select('id,display_name').eq('id',actor.id).maybeSingle(),
     ]);
-    return {user:{id:actor.id,email:actor.email},workspaces:result(responses[0]!),companies:result(responses[1]!),workspaceMemberships:result(responses[2]!),companyMemberships:result(responses[3]!)};
+    return {user:{id:actor.id,email:actor.email},staff:result(responses[4]!),profile:result(responses[5]!),workspaces:result(responses[0]!),companies:result(responses[1]!),workspaceMemberships:result(responses[2]!),companyMemberships:result(responses[3]!)};
   }
   async workspace(actor:AuthenticatedActor,name:string) {return result(await actor.client.rpc('create_workspace',{p_name:name}));}
   async requireManager(actor:AuthenticatedActor,companyId:string) {

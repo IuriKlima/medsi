@@ -1,0 +1,13 @@
+# Proposed service/instance names; confirm against the project before deployment.
+serviceId: medsi
+location: southamerica-east1
+schema:
+  source: ./schema
+  datasource:
+    postgresql:
+      database: medsi
+      cloudSql:
+        instanceId: medsi-postgres
+        schemaValidation: COMPATIBLE
+connectorDirs:
+  - ./admin

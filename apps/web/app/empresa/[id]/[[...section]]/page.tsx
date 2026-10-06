@@ -14,8 +14,10 @@ export default async function CompanyPage({params,searchParams}:{params:Promise<
  const permissions:Record<string,string>={preparacao:'marketing.read',concorrentes:'marketing.read',inicio:'company.read',agentes:'marketing.read',onboarding:'marketing.read',estrategia:'marketing.read',conteudo:'marketing.read',campanhas:'marketing.read',configuracoes:'company.read',crm:'crm.read',atendimento:'crm.read'};
  if(!permissions[area])notFound();
  const client=await serverSupabase();const {data:auth}=await client.auth.getUser();if(!auth.user?.email_confirmed_at)redirect('/login');
+ const {data:staff}=await client.from('platform_staff').select('role,active').eq('user_id',auth.user.id).maybeSingle();
+ const internalHref=staff?.active?(staff.role==='platform_admin'?'/admin':'/acompanhamento/carteira'):undefined;
  const {data:cap,error}=await client.rpc('company_capabilities',{p_company_id:id});
- const unavailable=<main className="internal-shell"><section className="panel internal-empty"><h1>Acesso indisponível.</h1><p>Seu perfil não permite abrir esta área ou o vínculo não está mais ativo.</p><Link className="button button-outline" href="/entrada">Trocar contexto</Link></section></main>;
+ const unavailable=<main className="internal-shell"><section className="panel internal-empty"><h1>Acesso indisponível.</h1><p>Seu perfil não permite abrir esta área ou o vínculo não está mais ativo.</p><Link className="button button-outline" href="/entrada">Voltar à minha conta</Link></section></main>;
  if(error||!cap?.actions?.includes(permissions[area]))return unavailable;
  let manageTeam=cap.actions.includes('billing.manage');
  if(area==='configuracoes'&&!manageTeam){const member=await client.from('company_members').select('role').eq('company_id',id).eq('user_id',auth.user.id).maybeSingle();manageTeam=!member.error&&member.data?.role==='admin';}
@@ -32,5 +34,5 @@ export default async function CompanyPage({params,searchParams}:{params:Promise<
  if(legacyTab){const preserved=new URLSearchParams();for(const [key,value] of Object.entries(query)){if(Array.isArray(value))value.forEach(item=>preserved.append(key,item));else if(value!==undefined)preserved.set(key,value);}redirect(companySettingsHref(id,legacyTab,preserved));}
  if(area==='agentes')redirect('/empresa/'+id+'/estrategia');
  if(area==='inicio'&&!cap.actions.includes('marketing.read'))redirect('/empresa/'+id+'/atendimento');
- return <>{!purchase.setupComplete&&<aside className="info-note"><Link href={'/comecar?empresa='+id}>← Voltar à configuração e aprovação da estratégia</Link></aside>}<CompanyJourney key={id+':'+area} company={company} area={area} calendarDay={day} settingsTab={setting?.id} manageTeam={manageTeam} userId={auth.user.id} actions={cap.actions} email={auth.user.email??''}/></>;
+ return <>{!purchase.setupComplete&&<aside className="info-note"><Link href={'/comecar?empresa='+id}>← Voltar à configuração e aprovação da estratégia</Link></aside>}<CompanyJourney key={id+':'+area} company={company} area={area} calendarDay={day} settingsTab={setting?.id} manageTeam={manageTeam} internalHref={internalHref} userId={auth.user.id} actions={cap.actions} email={auth.user.email??''}/></>;
 }

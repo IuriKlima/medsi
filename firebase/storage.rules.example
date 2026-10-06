@@ -1,0 +1,12 @@
+// Merge into the EXISTING bucket policy after reviewing its other applications.
+// This example is deliberately not included in firebase.json/deployment.
+// A broader matching allow elsewhere would also apply: rules are additive.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /medsi/{allPaths=**} {
+      // MedSI uses server authorization, Admin SDK and short-lived signed URLs.
+      allow read, write: if false;
+    }
+  }
+}

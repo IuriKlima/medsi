@@ -380,3 +380,445 @@ Navegação reorganizada: Visão geral → Conteúdo → Aquisição → Campanh
 Conforme pedido adicional, as telas internas de Resultados foram retiradas, incluindo os componentes antigos. /dashboard e /resultados redirecionam à Visão Geral da empresa ou à seleção de contexto. Referências dessas telas foram retiradas da navegação e dos painéis. Os dados e serviços usados pelos indicadores da Visão Geral foram preservados.
 
 Validação: pnpm check executou lint e tipos com sucesso; a suíte aprovou 257 testes e teve timeout de inicialização em dois grupos PostgreSQL (37 testes não executados). Reexecução isolada desses dois arquivos aprovou seus 41 testes, incluindo os quatro já executados na primeira passagem: todos os 294 testes, em 38 arquivos, estão validados. Os 14 testes novos cobrem upload durante preparação, limites e tipo do arquivo, transporte acima de 10 MB, sessão/origem, versão, navegação, permissões e retorno OAuth; o teste de banco também confirma a invalidação ao substituir vídeo aprovado. Build final aprovado para contratos, integrações, API, worker e Next; lint adicional e git diff --check também passaram. A prévia fictícia em .local compilou e respondeu HTTP 200; Chrome e navegador interno não responderam à abertura, portanto a conferência visual interativa permanece pendente. Nenhuma IA, publicação, mensagem ou alteração real de permissão foi executada. Sem SQL novo; deploy e upload em produção ainda precisam ser verificados.
+
+## 29/09/2026 — MedSI: identidade e foco em médicos e clínicas
+
+Solicitação atual aplicada sobre a base existente: a marca MedSI e o público médico substituem a identidade Askadia e o posicionamento fitness. Histórico técnico preservado. Análise e escopo detalhados em `docs/medsi-identidade-2026-09-29.md`.
+
+Identidade compartilhada com petróleo #123D46, menta #42D6B0 e marfim #F5F7F4, símbolo vetorial interpretado da prancha, wordmark, favicon, superfícies translúcidas e assinatura “Sua clínica em sintonia.”. Páginas públicas, acesso, prévia, comunicação interna e treze modelos de e-mail adaptados. Novas páginas de marketing e atendimento médico recebem os redirecionamentos das rotas antigas. Domínio público vem da configuração; não foi inventado um endereço MedSI.
+
+Onboarding, cadastro, pesquisa regional, CRM, campanhas, CSV e instruções dos agentes orientados a clínicas e consultórios. Incluídos os segmentos clinic e medical_practice, especialidades, convênios, identificação profissional e solicitação administrativa de agendamento. A IA recebe limites para questões clínicas e materiais precisam de revisão profissional; isso não garante conformidade ou comportamento dos provedores. Agenda transacional, prontuário, prescrição e diagnóstico não foram implementados. Integrações médicas ainda requerem homologação.
+
+Compatibilidade preservada para empresas antigas, formatos de importação, variáveis de campanha, códigos de CRM, preços e IDs de planos, vínculos de integração e chaves locais. A nova migração `202609290001_medsi_identity.sql` amplia segmentos, atualiza perguntas e nomes conhecidos do catálogo e sincroniza o segmento apenas quando o tipo informado muda. Os testes verificam que empresas antigas não são convertidas por suposição e que outro usuário não obtém acesso. Migração validada localmente em PostgreSQL/PGlite, sem aplicação remota.
+
+Validação: `pnpm check` executou lint e tipos com sucesso. A suíte aprovou 292 testes e deixou sete sem execução após um timeout de 30 s na inicialização do grupo HTTP de autenticação. Reexecução isolada, sem aumentar timeouts, aprovou os 40 testes de autenticação, jornada da empresa e limites MedSI: os 299 testes dos 39 arquivos foram cobertos pelo conjunto das execuções. A repetição inclui a migração final com nomes MedSI e preços preservados. Lint adicional dos últimos componentes e testes também aprovado. Um ajuste posterior apenas refinou o texto de duas perguntas de onboarding, igualmente no contrato e no SQL, com lint adicional aprovado. `pnpm build` final aprovado para contratos, integrações, API, worker e Next, incluindo geração das páginas e TypeScript. `git diff --check` limpo.
+
+Conferência com Playwright/Edge local: início, acesso, marketing médico, atendimento médico e prévia, em 1440 px e 390 px (dez combinações), sem erros de JavaScript, rolagem horizontal, marca antiga ou textos fitness nas páginas conferidas. Navegação real das duas rotas antigas chegou às novas URLs. Inspeção visual das capturas do início em desktop/celular e acesso em celular realizada. Evidências em `.local/medsi-review/`; dados da prévia permanecem identificados como fictícios. O servidor de conferência foi encerrado.
+
+Sem deploy, migração remota, aplicação dos e-mails no provedor, chamada paga de IA, mensagem, cobrança, publicação ou anúncio real. Próxima etapa: revisar domínio e configurações, aplicar migrações em homologação e validar as integrações antes da implantação autorizada.
+## 29/09/2026 — Onboarding médico e Firebase SQL Connect
+
+A solicitação atual substitui a ordem histórica do onboarding. Implementado fluxo
+por etapas no estilo Typeform: CNPJ, confirmação/ajuste de endereço, especialidade
+com opções, currículo PDF ou história, logo enviado ou solicitado, fotos opcionais,
+site existente ou solicitado e revisão final. Dados e anexos continuam vinculados
+à empresa, com idempotência, controle de concorrência e versões confirmadas.
+A prévia /preview/onboarding é isolada e identifica expressamente dados fictícios.
+
+A primeira etapa da estratégia passa a ser o público regional, com coleta do IBGE,
+estimativas Meta autorizadas e tendências via adaptador, fonte/data/escopo e
+indicação de indisponibilidade. Dados ausentes não são preenchidos por estimativa
+inventada; limitações exigem reconhecimento ao aprovar. Recoleta/edição invalida
+a aprovação anterior. Logo e site entram nas filas existentes conforme a escolha
+e os limites/plano. PDF é material de referência não confiável, sem instruções que
+possam substituir a solicitação do usuário. Detalhes em
+docs/medsi-onboarding-medico-2026-09-29.md.
+
+Validação do fluxo médico antes da adaptação Firebase: 26 testes de jornada e
+12 testes específicos aprovados, tipos aprovados. Conferência local em desktop
+1440 px e celular 390 px passou pelas etapas, revisão, retorno e confirmação,
+sem overflow nem erros de JavaScript; capturas inspecionadas. O primeiro pnpm check
+parou por um escape desnecessário no lint, corrigido. Integrações externas continuam
+com homologação pendente; não houve publicação, envio, cobrança ou anúncio real.
+
+O usuário escolheu explicitamente Firebase SQL Connect com PostgreSQL. Incluídos
+Firebase Auth, cookies de sessão no servidor, vínculo UID→UUID sem fusão por e-mail,
+adaptador PostgreSQL com RLS/papéis por transação, Storage privado e consultas de
+diagnóstico SQL Connect restritas a administradores. As regras de negócio e as
+migrações existentes foram preservadas. Modo COMPATIBLE; nenhum GraphQL empresarial
+é exposto diretamente ao navegador.
+
+Configuração pública salva somente no .env ignorado, exemplos fictícios versionados,
+scripts de preflight/migração com registro de hashes/lock/transação e diagnóstico
+sem exposição de segredos. Banco existente sem registro ou papéis conflitantes
+impedem a instalação automática. Configuração e pendências em
+docs/medsi-firebase-2026-09-29.md. A instalação dos SDKs foi concluída; a store local
+deste checkout é .pnpm-store.
+
+Validação dirigida final: 14 testes aprovados em tests/firebase-sql.test.ts e
+tests/firebase-auth.test.ts, incluindo isolamento, identidade, migrações
+idempotentes e papéis sem herança implícita. Storage usa bucket simulado nesses
+testes; isso não homologa o serviço remoto. A verificação completa após os últimos
+ajustes ainda não foi concluída.
+
+Não houve criação de recursos pagos, migração remota ou deploy. O console pediu
+autenticação Google, que foi encaminhada ao usuário; acesso administrativo ainda
+não confirmado. A configuração web enviada não fornece acesso ao Cloud SQL/Admin.
+Próxima etapa externa: confirmar acesso, inspecionar os serviços existentes,
+revisar provisionamento/permissões e homologar cadastro, arquivos, integrações e
+a jornada no ambiente conectado antes do uso real.
+
+## 29/09/2026 — Verificação para aplicação das tabelas Firebase
+
+O usuário autorizou subir as tabelas e informou que os recursos estavam criados.
+A consulta autenticada às APIs, concluída às 20:31 UTC, encontrou zero instâncias
+Cloud SQL e zero serviços SQL Connect em atendimentomac-88940. As duas consultas
+retornaram sucesso, sem erro de permissão. Evidência local sem credenciais:
+`.local/medsi-cloud-inventory.json`. Não houve criação de recurso pago, aplicação
+de SQL ou alteração de dados remotos. Solicitada a identificação do projeto ou
+instância caso o PostgreSQL tenha sido criado em outro destino.
+
+As migrações existentes mantêm preflight, hashes, transação e recusa de banco
+populado sem histórico MedSI. Nova execução de `pnpm check` iniciada; resultado
+ainda pendente em `.local/medsi-production-check.log`. Próxima etapa: identificar
+o banco real, executar o preflight e aplicar as migrações já autorizadas.
+
+
+## 29/09/2026 — Firestore Native, primeira etapa
+
+O proprietário substituiu SQL Connect por Firestore. Banco (default), região
+southamerica-east1, confirmado em atendimentomac-88940. Inicializados somente
+medsi/v1 e os dois planos atuais; reexecução confirmou três documentos sem criar
+novos. Regras privadas implantadas somente no Firestore; leitura anônima real
+retornou 403. Sem dados fictícios ou de pacientes no banco real.
+
+Adaptador nativo com transações, autorização por clínica, UID→UUID, cadastro
+médico versionado, arquivos privados e limites de consulta. 13 operações portadas;
+124 chamadas literais a RPCs ainda aguardam migração (inventário estático em
+docs/medsi-firestore-operations.json). Operações ausentes falham explicitamente;
+produção bloqueada até conclusão, sem fallback SQL. Env local usa firestore.
+
+32 testes aprovados, incluindo 16 com SDK oficial no emulador local: isolamento,
+concorrência, idempotência, revisão, anexos, revogação, CNPJ e acesso anônimo. Tipos
+da API e lint direcionado aprovados. A primeira execução pnpm check parou no lint
+do script CommonJS; corrigido para ESM. Nova execução completa ainda em andamento,
+log .local/medsi-firestore-check-final.log. Não afirmar build final aprovado.
+
+A CLI está autenticada, mas o servidor ainda não tem ADC/arquivo administrativo.
+Foi solicitado apenas o caminho local dessa credencial, sem compartilhar chaves.
+Detalhes em docs/medsi-firestore-2026-09-29.md. Próximas etapas: configurar identidade
+do servidor, portar os fluxos restantes, testar a jornada completa e então liberar
+a implantação. Sem deploy da aplicação, publicação, mensagem, cobrança ou anúncio.
+
+## 29/09/2026 — Credencial MedSI e verificação real dos serviços
+
+Conta medsi-api criada com acesso IAM limitado ao Firestore (default) e duas
+permissões de Auth: leitura de usuários e criação de sessão. Chave privada salva
+apenas em .local/credentials, ACL de usuário/SYSTEM e exclusão do Git verificadas;
+.env local aponta para o arquivo. SDK administrativo leu medsi/v1 no banco real.
+Nenhuma chave foi exposta ou enviada à hospedagem.
+
+O diagnóstico comprovou Auth ainda não inicializado (auth/configuration-not-found),
+faturamento desligado, ausência de buckets e API Firebase Storage desabilitada.
+Usuário informado sobre ativar E-mail/senha e Blaze para uploads. Browser indisponível
+por erro técnico de sandbox; não houve rejeição de revisão automática. Não foi
+habilitada cobrança nem concedida permissão de Storage antes de existir o bucket.
+
+A migração continua parcial: 13 operações nativas, 124 RPCs literais pendentes.
+Produção segue bloqueada. pnpm check em andamento; tipos e lint passaram, testes
+completos e build aguardando conclusão em .local/medsi-firestore-check-final.log.
+
+Validação intermediária: pnpm check teve lint/tipos aprovados e 331 testes aprovados,
+mas identity-api não carregou server-only fora do Next. Corrigida a dependência
+extraindo safeAuthDestination para módulo puro, mantendo o guard do Firebase.
+Os 10 testes de identidade passaram na reexecução dirigida (341 testes distintos
+aprovados). Lint/tipos/build após a correção em andamento. Configuração pública
+Firebase conferida pela API, sem exibir valores; exclusão de .local e .env do
+Docker confirmada. Emulador local encerrado após os 32 testes passarem.
+
+Validação concluída: lint e tipos aprovados após a correção; pnpm build terminou
+com sucesso para API, worker e web, incluindo 18 páginas estáticas. Evidência:
+.local/medsi-firestore-validation-final.log. São 341 testes distintos aprovados
+nas execuções (331 da suíte completa e 10 da suíte de identidade corrigida),
+mais os 16 cenários adicionais no SDK/emulador Firestore. pnpm check inicial
+falhou no carregamento da suíte de identidade; a correção e as demais etapas
+foram verificadas separadamente. git diff --check passou.
+
+Reconsulta final ao Firebase manteve Auth sem configuração, billingEnabled=false
+e nenhum bucket. Credencial e conexão Firestore resolvidas localmente; produção
+continua bloqueada pela migração parcial e pelas configurações externas pendentes.
+Nenhum deploy da aplicação, envio real, anúncio ou cobrança foi executado.
+
+## 29/09/2026 — Authentication ativado e validado
+
+O proprietário ativou o Authentication. Consulta oficial confirmou E-mail/senha
+habilitado com senha obrigatória; leitura via Firebase Admin SDK com a conta
+medsi-api aprovada. Adicionado 127.0.0.1 aos domínios autorizados conforme o
+WEB_ORIGIN local, preservando localhost e os dois domínios Firebase existentes.
+Evidência sem segredos: .local/medsi-auth-config-result.json.
+
+Não foram criados usuários ou enviados e-mails em teste. Não houve alteração de
+código da aplicação; permanece válida a validação anterior de lint, tipos, 341
+testes e build. Login e sessão completos ainda exigem homologação com o usuário.
+Faturamento continua desligado e nenhum bucket existe; Storage e migração dos
+fluxos restantes continuam pendentes. Nenhuma mudança de plano ou deploy.
+
+## 29/09/2026 — Pacote ZIP para Easypanel
+
+Solicitado empacotamento do diretório atual, incluindo alterações locais e fontes
+ainda não commitadas. Dockerfile, pnpm-lock.yaml e workspace na raiz do ZIP.
+Excluídos .env real, credenciais, .local, Git, node_modules, builds, caches, logs
+e anexos temporários. .env.example permanece como referência sem segredos.
+
+O empacotador verifica nomes de arquivos sensíveis, conteúdos de credenciais
+e compara as entradas do ZIP com hashes SHA-256 dos arquivos de origem. O relatório
+e o ZIP ficam em .local/releases. Guia do Easypanel atualizado para evidenciar
+o bloqueio atual de produção e separar o histórico Supabase da escolha Firestore.
+Sem alteração de código da aplicação ou deploy; permanece a validação anterior
+de lint, tipos, testes e build. A migração restante e Storage continuam pendentes.
+
+## 29/09/2026 — Correção de roteamento após deploy MedSI
+
+Evidência enviada: build Docker concluído; execução com NODE_ENV divergente e
+falha anterior na configuração de produção. Consulta HTTP sem autenticação confirmou
+/ = 503 com “Site indisponível.”, /login = 200 e /clinicas/UUID fictício = 404.
+O proxy tratava o host não reconhecido por WEB_ORIGIN como site de cliente.
+
+Implementados redirecionamentos /clinicas para as rotas existentes com autorização;
+alias opcional APP_HOSTNAMES por correspondência exata, sem curingas nem confiança
+em x-forwarded-host; diagnóstico agregado dos requisitos de produção sem segredos.
+Runner de produção exige NODE_ENV=production. Bloqueio da migração Firestore mantido,
+com rejeição adicional do emulador Firestore em produção. Guia informa a origem
+real da captura, portas e montagem Linux da credencial, sem modificar o env privado.
+
+Testes dirigidos e pnpm check em execução. Produção não foi reimplantada nem liberada;
+fluxos restantes do Firestore e uploads continuam pendentes. Nenhum dado de cliente,
+usuário, envio, anúncio ou cobrança foi criado/alterado por esta validação.
+
+Validação concluída em 30/09/2026: pnpm check terminou com código 0 (lint,
+tipos, 351 testes em 44 arquivos e builds de API, worker e web). As dez regressões
+de deploy estão incluídas nessa suíte. git diff --check também passou.
+
+Ensaio HTTP sobre o build Next local aprovado em seis verificações: raiz 200 no
+domínio canônico e no alias técnico; host de cliente segue a consulta de site
+publicado (fixture sem site retorna 404); /clinicas e subseções redirecionam com
+307 preservando parâmetros repetidos; área privada sem sessão redireciona para
+/login, inclusive pelo meta de streaming do Next, e mantém cache privado.
+API de sites simulada explicitamente; nenhum Firebase ou login real foi usado.
+Evidências locais: .local/medsi-deploy-check.log e .local/medsi-deploy-web-smoke.json.
+
+Pacote atualizado contém as correções de roteamento e diagnóstico, sem .env nem
+chaves. Não é uma liberação de produção: a migração Firestore continua parcial
+e seu bloqueio permanece. O ambiente do Easypanel não foi alterado nesta etapa.
+
+## 02/10/2026 — Nova verificação do erro no Easypanel
+
+HTTP público em medsi-app.3rkpc1.easypanel.host confirmou novamente / = 503
+com Site indisponível, /login = 200 e /clinicas/UUID fictício = 404. Portanto,
+o redirecionamento validado no pacote de 30/09 ainda não responde nesse domínio.
+Não foi possível determinar se houve fonte antiga, implantação pendente, falha
+na inicialização ou roteamento para outro container sem o log atual do serviço.
+
+A captura mostra apenas WEB_ORIGIN e PORT no editor do serviço. Esse bloco é
+parcial e precisa ser mesclado às demais configurações, não substituir o env.
+A captura não comprova variáveis compartilhadas nem o ambiente efetivo do processo.
+Conferida somente a presença das configurações no .env local e a existência da
+credencial administrativa; nenhum valor secreto foi exibido. Ambos permanecem
+preservados. Sem acesso API ao Easypanel; o navegador falhou por erro técnico do
+sandbox. Solicitadas as últimas linhas do log de execução, sem chaves ou tokens.
+
+Sem alteração de código, novo ZIP, deploy ou gravação no Firebase. A validação
+local de 30/09 permanece aplicável; não foi repetida uma compilação sem mudanças.
+O bloqueio de produção da migração Firestore continua existindo independentemente
+do env e precisa ser resolvido pela adaptação dos fluxos pendentes.
+
+### Diagnóstico confirmado pelo log de execução — 02/10/2026
+
+O log recebido depois da consulta HTTP comprova uma tentativa de inicializar a
+revisão com o novo diagnóstico de produção. A API encerra por configuração
+incompleta: sem DATABASE_PROVIDER=firestore, assume Supabase; a chave de
+criptografia está ausente/inválida e, na última tentativa registrada, WEB_ORIGIN
+também não passou na validação. O histórico mistura várias inicializações; não
+permite afirmar que todos os erros ocorreram com o ambiente exibido na captura.
+
+Preparado arquivo privado de recuperação em .local/credentials, derivado do
+.env local sem alterá-lo. Preservados os segredos existentes, inclusive a chave
+de criptografia; definidos provedor Firestore, origem pública MedSI, portas e
+caminho Linux /run/secrets/medsi-firebase.json. Removidas configurações legadas
+do provedor anterior e de emuladores. Projeto da credencial conferido, sem
+exibir seu conteúdo. O JSON precisa ser montado no container pelo Easypanel.
+
+Verificação com o validador compilado da API: os erros de ambiente relatados
+foram resolvidos no arquivo preparado; permanece o bloqueio explícito da
+migração Firestore incompleta. Esta verificação local não comprova IAM, bucket,
+login ou funcionamento dos fluxos no servidor. ACL do arquivo limitada ao
+usuário local e SYSTEM, sem herança; arquivo e credencial ignorados pelo Git
+e excluídos do pacote. Nenhum segredo incorporado à documentação.
+
+Sem deploy ou alteração no Firebase. Sem nova mudança de código; pnpm check
+não foi repetido por se tratar apenas de ambiente privado e documentação.
+Próxima etapa técnica: concluir e validar a migração dos fluxos Firestore antes
+de homologar produção, sem retirar a proteção para contornar operações ausentes.
+
+### Verificação remota atualizada — 02/10/2026, 13:36 UTC
+
+Consulta somente leitura com a credencial administrativa local confirmou acesso
+real ao Firestore e existência de medsi/v1 com schemaVersion=1. O diagnóstico
+firebase:doctor --remote confirmou também leitura administrativa no Firebase Auth.
+A inspeção da configuração confirmou e-mail/senha habilitados. Esses resultados
+não comprovam que a credencial foi montada ou que o ambiente foi aplicado no
+container do Easypanel, nem homologam login de usuário final.
+
+Pendências verificadas: migração dos fluxos Firestore continua incompleta e a API
+mantém bloqueio de produção; metadados do Storage inacessíveis; inventário do
+projeto sem buckets, API Cloud Storage for Firebase desabilitada/não utilizada e
+faturamento desabilitado. A lista de domínios autorizados do Auth ainda não contém
+medsi-app.3rkpc1.easypanel.host. HTTP público segue com raiz 503, login 200 e rota
+legada /clinicas/UUID fictício 404. Nenhum usuário, conteúdo, recurso ou configuração
+externa foi criado/alterado para essas verificações. Sem mudanças no código.
+
+Evidência local sem segredos: .local/medsi-firestore-current-read.json,
+.local/medsi-services-inventory.json e .local/medsi-deploy-http.json. O diagnóstico
+retornou código 1 pelas pendências de migração e Storage; isso não indica falha de
+acesso ao Firestore, cuja leitura passou. Próxima etapa: concluir a integração dos
+fluxos no código, preparar Storage e domínio do Auth e homologar o ambiente hospedado.
+## 02/10/2026 — Correção do acesso a /comecar com Firebase
+
+Captura do usuário e log local correlacionados: React #441 representa falha na
+renderização do servidor; a exceção concreta era limit is not a function no
+adaptador Firebase de leitura das clínicas. Inspeção identificou também ausência
+de rpc, usada imediatamente ao abrir uma clínica e consultar seu plano.
+
+Correção limitada ao adaptador web: limit aplicado depois de filtros e ordenação;
+consultas company_capabilities e company_purchase_state encaminhadas somente aos
+endpoints autenticados existentes. UUID validado; operações não suportadas e
+sessões ausentes falham sem buscar dados; recusas e falhas não expõem a resposta
+privada da API nem inventam permissões. Autorização continua no servidor/banco.
+Não houve remoção do bloqueio de produção nem migração dos demais fluxos.
+
+Oito regressões falharam primeiro pelos métodos ausentes e passaram depois da
+correção. Junto dos sete testes de permissões/configurações, 15 testes dirigidos
+passaram. pnpm check completo e renderização HTTP com API de teste isolada em
+andamento. Sem dados reais criados, deploy ou alteração de credenciais.
+Validação desta correção concluída: pnpm check passou em lint e tipos, mas a
+execução integral dos testes terminou com 336 aprovados, um timeout de teste e
+22 casos pulados por timeout no beforeAll de company-journey. Não registrar esse
+comando como aprovado. O teste de inicialização executava quatro subprocessos
+com cinco segundos cada, mas tinha prazo total padrão de cinco segundos: somente
+seu prazo agregado passou para 25 segundos, preservando os prazos individuais e
+as asserções. Na repetição isolada, deploy-routing + firebase-server-access
+passaram (18 testes). A suíte company-journey passou sozinha sem alteração
+(26 testes). Assim, os casos afetados pelos dois timeouts foram executados e
+aprovados. pnpm build também concluiu com código zero, incluindo API, worker e web.
+
+Ensaio HTTP sobre o novo build Next aprovado em seis cenários: visitante sem
+sessão exige login; usuário novo abre /comecar; usuário existente retoma a clínica;
+a clínica selecionada renderiza após autorização; acesso recusado não renderiza
+o onboarding; /empresa preserva o requisito de configuração/plano. API e sessões
+fictícias isoladas, explicitamente identificadas: nenhum login real foi homologado
+por esse ensaio. Evidência: .local/firebase-server-access-smoke.json.
+
+Web e API locais reiniciadas com os builds atualizados e automações desativadas.
+Página inicial, /login e /health responderam HTTP 200; API declara Firestore.
+Evidência: .local/medsi-local-after-access-fix.json. Sem implantação remota, criação
+de contas ou gravação de dados de clínica em testes. A migração Firestore dos
+demais módulos, Storage e homologação em produção continuam pendentes.
+## 2026-10-02 — Checkout de teste com persistência Firestore
+
+Relato: escolher um plano devolvia FIRESTORE_OPERATION_PENDING, embora a tela
+já estivesse em CHECKOUT_MODE=test. Causa reproduzida: begin_test_checkout e
+complete_test_checkout_server estavam ausentes do dispatcher Firestore, e a
+consulta company_purchase_state ignorava acessos de teste persistidos.
+
+Checkout simulado implementado, sem cobrança. Preços e parcelas vêm do contrato
+do servidor; seleção exige onboarding confirmado e billing.manage. Transações
+cancelam seleções substituídas e usam um cursor por clínica para serializar
+requisições concorrentes. A confirmação exclusiva do servidor revalida ator,
+empresa, permissão atual, aceite, estado e vencimento. O acesso de teste dura
+sete dias; repetição não estende o prazo. Recusa e cancelamento mantêm a IA
+bloqueada. Nenhuma assinatura paga é fabricada.
+
+company_purchase_state só reconhece acesso vinculado a checkout aprovado da
+própria clínica, respeita expiração e prioriza assinatura real ativa. Detalhes
+do checkout continuam restritos a billing.manage. O gate existente de provedores
+reconhece o acesso persistido e preserva quotas. Inventário: 15 operações
+implementadas, 122 chamadas literais ainda pendentes.
+
+Validação concluída:
+- 12 regressões reproduziram inicialmente a operação ausente; após a correção,
+  28 testes dirigidos passaram (12 checkout + 16 Firestore).
+- Mais dois cenários concorrentes adicionados: 14 testes de checkout passaram
+  com SDK oficial no emulador local demo-medsi, sem banco remoto.
+- pnpm check terminou com código zero: lint, tipos, 373 testes de 46 arquivos
+  e build completo (API, worker e Next com 18 páginas estáticas).
+- Interface e API locais reiniciadas com CHECKOUT_MODE=test e automações
+  desativadas. /login e /health retornam 200 (databaseProvider=firestore);
+  checkout sem sessão retorna 401.
+
+Evidências locais: .local/firestore-checkout-check.log,
+.local/firestore-checkout-emulator-tests.log e
+.local/firestore-checkout-runtime.json. O inicializador local explicita o modo
+de teste; .env e credenciais foram preservados. Não foi simulada confirmação
+na conta real do usuário: homologação autenticada final depende da interação
+do proprietário. Sem cobrança, criação de conta na nuvem, publicação ou deploy.
+
+Limites: ativação de teste não representa migração completa. Preparação da
+estratégia, aprovações e finish_company_setup continuam pendentes; não foram
+fabricadas aprovações ou enfileirados trabalhos sem implementação. O bloqueio
+de produção Firestore permanece intacto. Próxima etapa: migrar a jornada de
+estratégia com suas evidências, versões e permissões.
+
+## 2026-10-05 — Estratégia guiada nativa no Firestore (validada localmente)
+
+- Causa confirmada: após o checkout em teste, read_marketing_journey e as consultas de metadados não estavam implementadas. A interface continuava exibindo carregamento após a falha.
+- Implementados leitura com escopo de empresa; pesquisa regional com lease, tentativas e revisão de fontes; diagnóstico versionado; pautas com datas propostas; recomendações e cinco aprovações encadeadas; conclusão do cadastro vinculada às versões. Plano de teste preservado, sem assinatura real ou cobrança.
+- Trabalhadores reaproveitam os provedores existentes. Firestore prepara somente diagnóstico e recomendações; não produz peças, imagens ou sites nem publica/envia/ativa campanhas. A interface de acompanhamento sinaliza esses limites. A tela de erro oferece tentar novamente.
+- Segurança: acesso revalidado ao concluir jobs; resultados atrasados descartados; alterações de perfil, pesquisa, estratégia ou calendário invalidam aprovações dependentes. Pesquisa parcial Meta permanece pending; fontes ausentes exigem reconhecimento explícito.
+- Inventário: 34 operações nativas; 103 chamadas literais ainda pendentes. Guardas de produção mantidas. PDF/logo/fotos ainda dependem de bucket e faturamento Storage; integrações de pesquisa ausentes permanecem lacunas reais.
+- Verificado até aqui: 31 testes focados em memória (17 jornada e 14 checkout), typecheck API. Primeiro emulador encontrou timeouts na máquina local; execução repetida com timeout específico de integração. Suíte completa, revisão final e reinício ainda pendentes. Não foram criados dados de teste no Firebase real.
+
+Validação de regressão em 05/10:
+- pnpm check executado: lint e tipos passaram; a suíte terminou com 390/391 testes aprovados. A única falha era uma expectativa anterior de que approve_marketing_stage ainda não existia no Firestore.
+- A regressão passou a verificar start_content_run (ainda pendente), preservando também o bloqueio de aprovação inválida. Lint do teste e os 48 testes de Firestore/checkout/jornada passaram na repetição dirigida. Não houve falha funcional restante nessa validação.
+- Emulador oficial demo-medsi: 17 cenários passaram; após a revisão independente, os 2 cenários dirigidos de evidência parcial e histórico imutável também passaram. Nenhum documento de teste foi enviado ao projeto real.
+- Revisão independente concluída: os dois achados foram corrigidos e conferidos novamente. Compilação final da interface e verificação de execução local em andamento.
+
+Conclusão local em 05/10:
+- pnpm build terminou com código zero (API, worker e Next; 18 páginas estáticas). Lint e tipos passaram na checagem completa; a única expectativa antiga de teste foi corrigida e os 48 testes Firestore passaram na repetição dirigida. O pnpm check inicial não teve código zero; as evidências preservam esse resultado e a correção posterior.
+- Serviços reiniciados em 2026-10-05T14:14:45.573Z. Verificação HTTP em 2026-10-05T14:18:14.730Z: login 200, API saudável com databaseProvider=firestore, leitura e aprovação de estratégia sem sessão retornam 401. A primeira sonda antecedeu a inicialização completa; a repetição após Ready passou.
+- Local: http://127.0.0.1:3000/login. CHECKOUT_MODE=test; pesquisa regional e preparação de propostas habilitadas. Mensagens, anúncios, publicação, imagens e monitoramento Instagram continuam desativados. O worker de concorrentes não inicia no Firestore.
+- Cadastro, plano de teste e credenciais existentes preservados. Não aprovamos etapas na conta real nem executamos IA/publicação/cobrança como teste. Homologação autenticada com dados reais continua a cargo da revisão do proprietário.
+- Configuração local tem Firebase administrativo e provedor de estratégia. SERPAPI_API_KEY ausente; Trends é mostrado como pendente. A ponte de credenciais Meta ainda requer migração; Storage, conteúdo final, imagens, sites, dashboard e outros módulos permanecem pendentes. O bloqueio de produção Firestore foi preservado.
+- Evidências: .local/firestore-journey-check.log, .local/firestore-journey-regression.log, .local/firestore-journey-emulator-tests.log, .local/firestore-journey-build.log e .local/firestore-journey-runtime.json.
+
+## 2026-10-05 — Desbloqueio da coleta na estratégia guiada
+
+- Diagnóstico em dados reais, somente leitura: perfil confirmado e plano de teste válidos; pesquisa regional falhava após três tentativas, antes de qualquer diagnóstico ou aprovação.
+- Causa reproduzida: séries agregadas do IBGE retornam o município com o sufixo da UF, por exemplo `Sumaré (SP)`. A validação nativa do Firestore comparava apenas com `Sumaré` e rejeitava a evidência com `Invalid census scope`.
+- Correção restrita à comparação: aceita o nome simples ou o nome com a UF correspondente; outra cidade ou UF continua bloqueada. O rótulo original e os dados da fonte são preservados.
+- Regressão atravessa o coletor regional e a persistência nativa, cobre rótulo oficial, recortes incorretos e aprovação humana com reconhecimento de lacunas. Vermelho confirmado (22023); depois, 31 testes de jornada/adaptadores passaram. API compilada; revisão independente sem achados.
+- Recuperação local: nova solicitação da coleta que falhou, pelo mesmo ator e pelas regras nativas de permissão, perfil e plano. Nenhuma aprovação automática, cobrança, publicação ou mensagem. Checagem completa e confirmação da coleta em andamento.
+- Evidências: `.local/regional-label-red.log`, `.local/regional-label-green.log`, `.local/regional-label-api-build.log`, `.local/regional-label-check.log` e `.local/regional-label-runtime.json` (gerado quando a coleta terminar).
+Verificação real da recuperação: em 05/10/2026 às 18:46:48 UTC, a revisão 4 da pesquisa chegou a `ready` na primeira tentativa. IBGE disponível para Sumaré/SP (rótulo original `Sumaré (SP)`); Facebook indisponível e Trends sem configuração. Nenhuma aprovação foi criada. API local reiniciada em modo de teste; verificação completa ainda em execução.
+Conclusão desta correção:
+- Leitura pelo `LaunchController` com dados reais confirmou perfil válido, primeira etapa pronta, permissão de aprovação e nenhuma aprovação automática (`.local/regional-label-journey-read.json`). A revisão do proprietário é o próximo passo; fontes ausentes continuam exigindo reconhecimento explícito.
+- `pnpm check` terminou com código zero: lint, tipos, 392 testes em 47 arquivos e build completo. Inclui o teste novo atravessando coletor → persistência → aprovação e regressões dos dois bancos. Testes usaram fixtures isoladas; a recuperação real fez somente a pesquisa pública já solicitada.
+- Interface local reiniciada em 2026-10-05T19:11:49.375Z; verificação HTTP em 2026-10-05T19:12:16.684Z: login 200, API saudável com Firestore, leitura e aprovação sem sessão 401. Evidência: `.local/regional-label-http.json`.
+- Sistema permanece local, em `CHECKOUT_MODE=test`. Sem deploy, cobrança ou aprovação em nome do usuário. Facebook/Trends e os demais limites da migração descritos anteriormente permanecem pendentes; não foi removida nenhuma guarda de produção.
+## 2026-10-05 — Login bloqueado por cota do Firestore
+
+- Diagnóstico real: `/login` e `/health` respondiam 200; Firebase Auth reconhecia a configuração. A leitura administrativa de um documento da clínica falhou com gRPC 8, `Quota exceeded.`. Não foram solicitadas senhas nem criadas sessões artificiais.
+- Decisão do usuário: manter o plano gratuito e aguardar a renovação. Faturamento não foi ativado; nenhuma credencial ou documento da clínica foi alterado nesta correção.
+- Login agora consulta a identidade autorizada antes de emitir cookie de sucesso. Cota excedida retorna 503 com mensagem legível. Sessão existente com banco indisponível propaga a falha, em vez de ser tratada como usuário anônimo; sessão ausente/inválida continua rejeitada.
+- Filas Firestore de pesquisa regional, estratégia e recomendações: consulta ociosa a cada 60 segundos; falha espera 5 minutos; trabalho encontrado mantém a cadência normal. Caminho SQL preservado. Interface consulta preparação a cada 15 segundos, revisão parada/erro a cada 5 minutos e não consulta automaticamente em aba oculta. Consulta de logo para quando a função está indisponível.
+- TDD: execução inicial reproduziu 12 falhas; depois, 29 testes de autenticação, sessão e workers passaram em 4 arquivos. Relógios, credenciais e respostas de teste são fixtures isoladas, sem gravações na nuvem.
+- Revisão independente sem achados acionáveis. Limites: efeitos React de visibilidade/temporização revisados em código; navegador automatizado indisponível por falha de infraestrutura. Login real após a renovação ainda não homologado.
+- `pnpm check` em execução; processos locais pausados durante a reconstrução. Resultado final e reinício serão registrados abaixo.
+- Evidências: `.local/login-quota-red.log`, `.local/login-quota-green.log`, `.local/login-quota-check.log`; diagnóstico real registrado durante a sessão (uma leitura, código 8).
+Conclusão da correção do login:
+- `pnpm check` terminou com código zero: lint, tipos, 409 testes em 49 arquivos e build completo de API, worker e Next. Revisão independente sem achados acionáveis.
+- Servidores locais reiniciados em 2026-10-05T21:27:18.071Z. A primeira sonda antecedeu a inicialização completa da API; repetida após a inicialização, passou em 2026-10-05T21:28:35.141Z: página/formulário de login 200, API saudável com Firestore, jornada sem sessão 401 e formulário inválido 400. Evidência: `.local/login-quota-runtime.json`.
+- URL local: http://127.0.0.1:3000/login. Modo de teste preservado. Não houve alteração de faturamento, deploy no Easypanel, cobrança, publicação ou aprovação de etapas na conta real.
+- Limite externo continua pendente: login autenticado depende da renovação da cota do Firestore. A documentação oficial informa renovação por volta da meia-noite do Pacífico (aproximadamente 04h de Brasília em 06/10/2026). Atualizar a página e tentar entrar após a renovação é a próxima verificação real. Não foram repetidas leituras administrativas do banco esgotado.
+- Fonte do horário de renovação: https://firebase.google.com/docs/firestore/quotas . Correções disponíveis somente na versão local; uma implantação anterior no Easypanel não recebe estas mudanças automaticamente.
+
+## 2026-10-06 — Cadastro adaptado, conta única e estratégia regional após plano
+
+- Primeira pergunta Clínica/Consultório; comunicação adaptada e retomada de perfis antigos sem reescrita. Migração SQL incremental entregue, sem aplicação remota. No Firestore, tipo e endereço precisam corresponder; mudanças exigem reconfirmação.
+- Cliente entra direto na conta autorizada. UI sem seletor de workspace; configuração Minha conta e convites preservados. Criação Firestore reutiliza a clínica existente e serializa concorrência. Administração interna preservada. Detalhes: docs/medsi-conta-unica-2026-10-06.md.
+- Removida a espera artificial antes da escolha do plano. Pesquisa e IA continuam condicionadas ao plano confirmado no servidor; checkout de teste identificado, sem cobrança.
+- Etapa 1: indicadores IBGE/Facebook/Trends acima de mapa Leaflet/OpenStreetMap e assuntos relacionados. Mapa começa com viewport municipal; cliente confirma o ponto da clínica e raio 1/3/5/10 km. Estabelecimentos via Overpass, seleção explícita até20/50 candidatos. Município, raio, alcance estimado e índices de busca continuam separados.
+- Novos tópicos consultam todas as especialidades junto ao município. Google: top0–100 separado de rising/Breakout. X: amostra recente validada e interações, sem atribuir crescimento/residência. Assuntos Facebook sem fonte autorizada permanecem indisponíveis. SERPAPI_API_KEY e X_BEARER_TOKEN ausentes localmente; Meta depende da ponte/conexão de credenciais no Firestore.
+- Pesquisa/seleção versionadas: só candidatos atuais autorizados; mudanças invalidam aprovações dependentes. Snapshot integral chega ao contexto da IA junto com perfil e currículo. Progresso por fonte usa lease/escopo/plano; não altera a base da aprovação. Sem porcentagem de conclusão inventada ou gravação por segundo.
+- Revisão independente corrigiu coordenadas vazias com valores implícitos, indicação de coleta sem job e refresh que descartava escolhas; backend corrigiu mapa omitido, progresso de lease anterior, coordenadas inválidas e geometria municipal volumosa. Testes específicos de cadastro, navegação, provedores, UI e autorização passaram em fixtures isoladas. Nenhum registro de teste na nuvem.
+- Instalação local restaurada pelo lockfile (dependência openai ausente); Leaflet1.9.4 e tipos adicionados. Documentação técnica/limites: docs/medsi-fluxo-regional-2026-10-06.md.
+- pnpm check em execução; servidores locais pausados para compilação. Resultado e reinício serão registrados abaixo. Navegador automatizado não inicializou (apply deny-read ACLs); sem homologação visual interativa ou login real nesta etapa. Validação SSR verifica fontes/progresso/layout semântico.
+- Uma leitura real no início de06/10 confirmou renovação da cota Firestore. Plano gratuito mantido. Sem mudanças de faturamento, credenciais, deploy, aprovações automáticas, cobranças, mensagens ou anúncios.
+
+Conclusão da validação local:
+- A primeira checagem parou em um tipo anulável de endereço, corrigido. A segunda execução de pnpm check passou lint/tipos e executou 456 testes em 57 arquivos: 455 passaram e 1 fixture antiga do worker falhou por não incluir mapa/progresso. A fixture foi corrigida para contar leituras de fila separadamente e verificar as escritas de progresso/resultado; os 10 testes desse arquivo passaram na repetição dirigida, incluindo a cadência de60s e recuo de300s. Lint direcionado passou. Não afirmamos que a execução original de pnpm check teve código zero.
+- pnpm build final terminou com código zero para contratos, integrações, API, worker e Next. Nenhuma mudança de produto ocorreu após a suíte completa; o último ajuste foi apenas a fixture de teste. Regressões novas de mapa, fontes, autorização, conta única, cadastro e apresentação passaram nessa suíte.
+- Verificação pública real da malha IBGE Sumaré/SP: HTTP200, GeoJSON FeatureCollection/Polygon, em2026-10-06T16:34:00.609Z. Nenhuma coordenada dessa verificação foi registrada como local da clínica; não houve escrita Firestore.
+- Serviços locais reiniciados com modo de teste. Sondas HTTP em 2026-10-06T16:56:46.995Z: login200/formulário presente, API saudável com Firestore; jornada, pesquisa e seleção sem sessão retornam401; formulário inválido400. Endereço: http://127.0.0.1:3000/login.
+- Sem login real, aprovação de etapas ou chamadas de IA em nome do usuário. Navegador automatizado permaneceu indisponível por falha ACL; conferência visual interativa e homologação de integrações permanecem pendentes. Novas pesquisas exigem Atualizar coleta quando já existe uma versão salva.
+- Evidências: .local/regional-complete-check.log, .local/regional-complete-check-final.log, .local/regional-queue-green.log, .local/regional-queue-lint.log, .local/regional-final-build.log, .local/regional-runtime.json e .local/regional-ibge-map.json. Sem deploy, alteração de faturamento, envio de mensagens ou ativação de anúncios.

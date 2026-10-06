@@ -14,7 +14,7 @@ export const commerceFeatures=[
  ['Conteúdo que carrega sua marca','Ideias, legendas, roteiros, imagens e carrosséis com IA, reunidos em um calendário para sua revisão.'],
  ['Seu site, do primeiro rascunho à publicação','Uma página para apresentar o negócio, editar textos e imagens e receber interessados.'],
  ['Campanhas com você no controle','Propostas, criativos e programação de anúncios Meta e Google nos formatos disponíveis, sempre sujeitos à sua aprovação.'],
- ['Relacionamento que continua','Sugestões de campanhas para alunos e leads, com público, mensagem e datas para aprovar.'],
+ ['Relacionamento que continua','Sugestões de campanhas para pacientes e leads, com público, mensagem e datas para aprovar.'],
  ['Atendimento com contexto','Caixa de entrada, assistente de IA e transferência para sua equipe no WhatsApp conectado.'],
  ['Oportunidades organizadas','CRM, histórico e acompanhamento de contatos para sua equipe conduzir cada próximo passo.'],
  ['Clareza para decidir','Dashboards, tarefas e indicadores das fontes conectadas, com sugestões para orientar os ajustes.'],

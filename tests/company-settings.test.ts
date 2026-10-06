@@ -22,7 +22,7 @@ describe('Company settings stay scoped after consolidating navigation',()=>{
  beforeEach(()=>{vi.clearAllMocks();vi.stubGlobal('React',React);});afterEach(()=>vi.unstubAllGlobals());
  it('orders the menu as requested without any Results screen',()=>{
   const navigation=companyNavigation(ownerActions,true);
-  expect(navigation.map(group=>group.title)).toEqual(['Visão geral','Conteúdo','Aquisição','Campanhas','Planejamento','Configurações']);
+  expect(navigation.map(group=>group.title)).toEqual(['Visão geral','Conteúdo','Aquisição','Campanhas','Planejamento','Conta']);
   expect(navigation.flatMap(group=>group.items).some(([id])=>id==='resultados')).toBe(false);
  });
  it('limits tabs to authorized actions, including both requirements for attendance',()=>{

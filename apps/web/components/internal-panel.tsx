@@ -13,7 +13,7 @@ import { connectedApi } from '../lib/api-client';
 
 const statusLabels:Record<string,string>={draft:'Sem contratação',pending:'Aguardando pagamento',active:'Ativa',past_due:'Pagamento pendente',canceled:'Cancelada',suspended:'Suspensa'};
 export function InternalDenied({unavailable=false}:{unavailable?:boolean}){
-  return <main className="internal-shell"><Link className="brand" href="/workspace"><BrandWordmark/></Link><section className="panel internal-empty"><ShieldCheck size={30}/><h1>{unavailable?'A operação ainda está sendo configurada.':'Este espaço é da equipe Askadia.'}</h1><p>{unavailable?'A estrutura de acesso interno ainda não está disponível no banco.':'Seu usuário não possui a permissão interna necessária. Convites de empresas não concedem administração da plataforma.'}</p><Link className="button button-outline" href="/workspace">Voltar às minhas empresas</Link></section></main>;
+  return <main className="internal-shell"><Link className="brand" href="/workspace"><BrandWordmark/></Link><section className="panel internal-empty"><ShieldCheck size={30}/><h1>{unavailable?'A operação ainda está sendo configurada.':'Este espaço é da equipe MedSI.'}</h1><p>{unavailable?'A estrutura de acesso interno ainda não está disponível no banco.':'Seu usuário não possui a permissão interna necessária. Convites de empresas não concedem administração da plataforma.'}</p><Link className="button button-outline" href="/workspace">Voltar às minhas empresas</Link></section></main>;
 }
 export function PortfolioPanel({admin,email}:{admin:boolean;email:string}){
   const [data,setData]=useState<Portfolio|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
@@ -37,7 +37,7 @@ export function PortfolioPanel({admin,email}:{admin:boolean;email:string}){
   }
   return <main className="internal-shell">
     <header className="internal-header"><Link className="brand" href="/workspace"><BrandWordmark/></Link><Link className="button button-outline" href="/workspace">Minhas empresas</Link></header>
-    <div className="page-heading"><div><div className="page-eyebrow">OPERAÇÃO ASKADIA</div><h1>{admin?'Cada cliente. Uma visão clara.':'Sua carteira de acompanhamento.'}</h1><p>{admin?'Empresas, situação comercial e acessos internos auditados.':'Somente empresas atribuídas a você aparecem nesta carteira.'}</p></div><Button variant="outline" onClick={()=>setRevision(v=>v+1)} disabled={loading}><RefreshCw size={16}/>Atualizar</Button></div>
+    <div className="page-heading"><div><div className="page-eyebrow">OPERAÇÃO MEDSI</div><h1>{admin?'Cada cliente. Uma visão clara.':'Sua carteira de acompanhamento.'}</h1><p>{admin?'Empresas, situação comercial e acessos internos auditados.':'Somente empresas atribuídas a você aparecem nesta carteira.'}</p></div><Button variant="outline" onClick={()=>setRevision(v=>v+1)} disabled={loading}><RefreshCw size={16}/>Atualizar</Button></div>
     <div className="info-note"><ShieldCheck size={17}/><p>Operador: {email}. Abrir um cliente registra seu acesso e não concede aprovação de publicação ou orçamento.</p></div>
     <form className="internal-search form" onSubmit={e=>{e.preventDefault();setOffset(0);setQuery(search);}}><label>Buscar empresa<input value={search} maxLength={100} onChange={e=>setSearch(e.target.value)} placeholder="Nome da empresa"/></label><Button type="submit">Buscar</Button></form>
     {error&&<div className="error-banner" role="alert">{error}</div>}

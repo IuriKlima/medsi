@@ -1,6 +1,8 @@
+import {serviceDatabase} from '../platform/service';
+import {databaseConfigured} from '../platform/config';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {BadRequestException,ForbiddenException,ServiceUnavailableException} from '@nestjs/common';
-import {createClient} from '@supabase/supabase-js';
+
 import {z} from 'zod';
 import {metaAccess,type InboxThread,type InboxMessage} from '@askadia/contracts';
 import type {AuthRequest} from '../identity/auth';
@@ -10,8 +12,8 @@ export type MetaContext={page:string;instagram:string|null;token:string;userToke
 export async function metaContext(r:AuthRequest,company:string,action='crm.read'):Promise<MetaContext>{
  if(!z.uuid().safeParse(company).success)throw new BadRequestException();
  const cap=result<{actions:string[]}>(await r.actor.client.rpc('company_capabilities',{p_company_id:company}));if(!cap.actions.includes(action))throw new ForbiddenException();
- if(!process.env.SUPABASE_URL||!process.env.SUPABASE_SERVICE_ROLE_KEY)throw new ServiceUnavailableException('Consulta de canais indisponível no servidor.');
- const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+ if(!databaseConfigured())throw new ServiceUnavailableException('Consulta de canais indisponível no servidor.');
+ const db=serviceDatabase();
  const row=result<{remote_id:string;metadata:{scopes?:string[];tasks?:string[];instagramId?:string;expiresAt?:string};cipher:string}|null>(await db.rpc('read_company_meta_server',{p_company_id:company,p_actor:r.actor.id,p_action:action}));
  if(!row)throw new BadRequestException('Selecione e conecte a Página desta empresa em Integrações.');
  if(row.metadata.expiresAt&&Date.parse(row.metadata.expiresAt)<=Date.now())throw new BadRequestException('A autorização Meta expirou. Atualize as autorizações em Integrações.');

@@ -1,0 +1,4 @@
+# Diagnostics only. No browser operation can bypass the existing API/RLS.
+query MedsiDatabaseStatus @auth(level: NO_ACCESS) {
+  companies(limit: 1) { id }
+}

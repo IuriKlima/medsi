@@ -7,7 +7,7 @@ import {journeyApi} from '../lib/journey-api';
 import styles from './journey.module.css';
 import {LoadState} from './load-state';
 type CrmData={links:{contactId:string;thread:string;time:string|null;preview:string}[];contacts:{id:string;name:string;phone_e164:string|null;email:string|null}[];opportunities:{id:string;contact_id:string;interest:string;stage:string}[];conversations:{id:string;contact_id:string;channel:string;mode:'human'|'ai'|'closed';revision:number;triage_summary:string|null;assigned_to:string|null}[];notes:{id:string;conversation_id:string;body:string;created_at:string}[]};
-const stages:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Visita agendada',attended:'Compareceu',enrolled:'Matriculado',lost:'Perdido'};
+const stages:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Consulta agendada',attended:'Compareceu',enrolled:'Conversão confirmada',lost:'Perdido'};
 export function CrmPanel({companyId,inbox,write}:{companyId:string;inbox:boolean;write:boolean}){
  const [customer,setCustomer]=useState('');
  const [view,setView]=useState<'list'|'kanban'>('kanban'),[search,setSearch]=useState(''),[syncNotice,setSyncNotice]=useState('');

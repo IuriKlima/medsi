@@ -1,0 +1,6 @@
+# Existing PostgreSQL table. Application migrations own the complete schema.
+# Do not enable STRICT migrations: business tables/functions/RLS must be retained.
+type Company @table(name: "companies", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  name: String!
+}

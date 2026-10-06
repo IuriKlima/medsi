@@ -2,12 +2,10 @@ import type { TrendFact } from './schema';
 export function keywordCandidates(profile:{segment:string;city:string;neighborhood?:string;services:string[];confirmed:boolean}){
  if(!profile.confirmed)return [];
  const services=new Set(profile.services.map(s=>s.toLowerCase()));const place=profile.city.trim();if(!place)return [];
- const type=profile.segment==='studio'?'estúdio':profile.segment==='gym'?'academia':profile.segment;
- const candidates=[type+' perto de mim',type+' em '+place,'preço de '+type,'planos de '+type,'aula experimental de '+type,type+' para iniciantes',type+' horários',type+' avaliações',type+' mensalidade',type+' matrícula',type+' planos mensais',type+' planos anuais',type+' telefone',type+' endereço',type+' localização',type+' atendimento',type+' estrutura',type+' em '+place+' preços',type+' em '+place+' horários',type+' em '+place+' avaliações'];
+ const type=profile.segment==='clinic'?'clínica médica':profile.segment==='medical_practice'?'consultório médico':profile.segment==='gym'?'academia':profile.segment==='studio'?'estúdio':profile.segment;
+ const candidates=[type+' perto de mim',type+' em '+place,type+' agendamento',type+' consultas',type+' horários',type+' avaliações',type+' telefone',type+' endereço',type+' localização',type+' atendimento',type+' equipe',type+' acessibilidade',type+' contato',type+' informações',type+' serviços',type+' em '+place+' horários',type+' em '+place+' endereço',type+' em '+place+' contato',type+' em '+place+' atendimento',type+' em '+place+' avaliações'];
  if(profile.neighborhood?.trim())candidates.push(type+' em '+profile.neighborhood.trim());
- for(const [service,terms] of Object.entries({musculação:['musculação','musculação para iniciantes','treino para hipertrofia','musculação em '+place],pilates:['pilates perto de mim','estúdio de pilates','pilates em '+place],funcional:['treinamento funcional','treinamento funcional em '+place],spinning:['aula de spinning','spinning em '+place],dança:['aula de dança fitness'],personal:['personal trainer','personal trainer em '+place],'24 horas':['academia 24 horas'],totalpass:['academia com TotalPass'],wellhub:['academia com Wellhub']})){
-   if(services.has(service))candidates.unshift(...terms);
- }
+ for(const service of services)if(service.trim())candidates.unshift(service+' em '+place,service+' agendamento');
  return [...new Set(candidates)].slice(0,20).map((term,index)=>({term,priority:index+1,measured:false as const,reason:'Sugestão editorial baseada no perfil confirmado; pesquisa pendente.'}));
 }
 export function trendGroups(rows:TrendFact[]){

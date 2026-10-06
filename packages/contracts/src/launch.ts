@@ -4,4 +4,4 @@ const suggestion=z.object({title:z.string().min(1).max(120),objective:z.string()
 export const launchRecommendationsSchema=z.object({summary:z.string().max(1500),whatsapp:z.array(suggestion).min(1).max(3),messages:z.array(suggestion).min(1).max(3),traffic:z.array(suggestion).min(1).max(3),unknowns:z.array(z.string().max(300)).max(20)}).strict();
 export type LaunchRecommendations=z.infer<typeof launchRecommendationsSchema>;
 export type LaunchJob={id:string;kind:'site'|'recommendations';status:'pending'|'running'|'completed'|'failed'|'stale';error:string|null;updated_at:string;output:LaunchRecommendations|null};
-export type LaunchSnapshot={profileVersion:number;confirmed:boolean;approved:boolean;available:boolean;contentAvailable:boolean;jobs:LaunchJob[];content:{status:string;stage:string;error:string|null}|null;canEdit:boolean};
+export type LaunchSnapshot={profileVersion:number;confirmed:boolean;approved:boolean;available:boolean;contentAvailable:boolean;siteAvailable?:boolean;proposalOnly?:boolean;jobs:LaunchJob[];content:{status:string;stage:string;error:string|null}|null;canEdit:boolean};

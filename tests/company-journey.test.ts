@@ -27,7 +27,7 @@ describe('Company journey: persistent transactions and authorized isolation',()=
  it('creates first workspace and draft atomically, with initial chat and no subscription charge',async()=>{
   const request=randomUUID();const first=await scalar<{companyId:string;workspaceId:string}>('select public.begin_company_onboarding($1)',[request]);a=first.companyId;w=first.workspaceId;
   const replay=await scalar<{companyId:string}>('select public.begin_company_onboarding($1)',[request]);const doubleClick=await scalar<{companyId:string}>('select public.begin_company_onboarding($1)',[randomUUID()]);expect(replay.companyId).toBe(a);expect(doubleClick.companyId).toBe(a);
-  const s=await read();expect(s.step).toBe('identity');expect(s.state.facts).toEqual({});expect(s.messages).toHaveLength(1);expect(s.messages[0]?.body).toContain('nome do negócio');expect((s.capabilities as {subscription:{status:string}}).subscription.status).toBe('draft');
+  const s=await read();expect(s.step).toBe('identity');expect(s.state.facts).toEqual({});expect(s.messages).toHaveLength(1);expect(s.messages[0]?.body).toContain('nome da sua clínica');expect((s.capabilities as {subscription:{status:string}}).subscription.status).toBe('draft');
  });
  it('persists multiple facts and resumes exact step across independent reads',async()=>{
   const answers=guidedAnswers('identity','Movimento em Varginha');const s=await save({...answers,businessType:fact('Academia')});expect(s.step).toBe('location');expect(s.state.facts.city?.value).toBe('Varginha');expect((await read()).state).toEqual(s.state);expect(onboardingStep(s.state)).toBe(s.step);
@@ -54,6 +54,23 @@ describe('Company journey: persistent transactions and authorized isolation',()=
  });
  it('existing businesses start with their previous metadata and do not repeat supplied answers',async()=>{
   const company=await scalar<{id:string}>("select row_to_json(public.create_company($1,'Estúdio Existente','studio','São Paulo','America/Sao_Paulo'))",[w]);const s=await read(company.id);expect(s.step).toBe('location');expect(s.state.facts.name?.source).toBe('existing');
+ });
+ it('supports medical segments without reclassifying legacy companies or bypassing tenant permissions',async()=>{
+  await db.exec('reset role');
+  expect(await scalar("select jsonb_build_object('name',name,'price',price_cents) from public.plan_catalog where id='askadia_monthly'")).toEqual({name:'MedSI Mensal',price:159700});
+  expect(await scalar("select jsonb_build_object('name',name,'price',price_cents) from public.plan_catalog where id='askadia_semiannual'")).toEqual({name:'MedSI Semestral · até 6 parcelas',price:800000});
+  await as(users.owner);
+  const clinic=await scalar<{id:string}>("select row_to_json(public.create_company($1,'Clínica Teste','clinic','São Paulo','America/Sao_Paulo'))",[w]);
+  const doctor=await scalar<{id:string}>("select row_to_json(public.create_company($1,'Consultório Teste','medical_practice','São Paulo','America/Sao_Paulo'))",[w]);
+  expect((await read(clinic.id)).state.facts.businessType?.value).toBe('Clínica');
+  expect((await read(doctor.id)).state.facts.businessType?.value).toBe('Consultório médico');
+  const edited=await save({businessType:fact('Clínica médica')},'reply','Tipo confirmado',doctor.id);
+  expect(edited.state.facts.businessType?.value).toBe('Clínica médica');
+  expect(await scalar('select segment from public.companies where id=$1',[doctor.id])).toBe('clinic');
+  expect(await scalar('select segment from public.companies where id=$1',[a])).toBe('gym');
+  await as(users.other);await expect(save({businessType:fact('Consultório médico')},'reply','Outro usuário',clinic.id)).rejects.toThrow('Access denied');
+  expect(await scalar('select count(*)::int from public.companies where id=$1',[clinic.id])).toBe(0);
+  await as(users.owner);
  });
  it('enforces read/write boundaries on RPC and tables for unrelated users and attendants',async()=>{
   await db.exec('reset role');await db.query("insert into public.company_members(company_id,user_id,role) values($1,$2,'marketing'),($1,$3,'attendant')",[a,users.marketing,users.attendant]);

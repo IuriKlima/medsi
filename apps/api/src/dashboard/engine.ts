@@ -77,8 +77,8 @@ function buildPeriod(raw:DashboardRaw,q:DashboardQuery,now=new Date()){
  const canCrm=raw.crm!==null&&!q.campaign&&!q.account&&q.channel==='all';
  const crm=canCrm?raw.crm!.filter(r=>within(dateInZone(new Date(r.createdAt),q.timezone),q.start,q.end)):null;
  const leads=crm===null?null:new Set(crm.map(r=>r.contactId)).size;
- metrics.splice(1,0,{id:'leads',label:'Leads únicos',value:leads,unit:'count',state:leads===null?'unsupported':'available',reason:leads===null?'CRM sem acesso ou atribuição incompatível com os filtros.':null,formula:'Contatos distintos das oportunidades criadas no período',bases:{leads},source:'CRM Askadia',updatedAt:now.toISOString(),better:'higher'});
- const stageNames:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Visita agendada',attended:'Compareceu',enrolled:'Matrícula registrada',lost:'Perdido'};
+ metrics.splice(1,0,{id:'leads',label:'Leads únicos',value:leads,unit:'count',state:leads===null?'unsupported':'available',reason:leads===null?'CRM sem acesso ou atribuição incompatível com os filtros.':null,formula:'Contatos distintos das oportunidades criadas no período',bases:{leads},source:'CRM MedSI',updatedAt:now.toISOString(),better:'higher'});
+ const stageNames:Record<string,string>={new:'Novo',in_progress:'Em atendimento',qualified:'Qualificado',referred:'Encaminhado',scheduled:'Consulta agendada',attended:'Compareceu',enrolled:'Conversão registrada',lost:'Perdido'};
  const funnel=crm===null?null:Object.entries(stageNames).map(([stage,label])=>({stage,label,count:crm.filter(r=>r.stage===stage).length}));
  const social=allFacts.filter(f=>f.kind==='social').filter(p=>!q.account||p.accountId===q.account).filter(p=>q.socialMode==='published'?within(dateInZone(new Date(p.publishedAt),q.timezone),q.start,q.end):p.temporal==='interval'&&p.intervalStart===q.start&&p.intervalEnd===q.end)
  .map(p=>({...p,engagementRate:engagement([p.likes,p.comments,p.saves,p.shares],p.reach),scope:p.temporal==='lifetime'?'Acumulado até a coleta':'Atividade de '+p.intervalStart+' a '+p.intervalEnd}));
@@ -91,7 +91,7 @@ function buildPeriod(raw:DashboardRaw,q:DashboardQuery,now=new Date()){
   keywordCandidates:keywordCandidates({segment:raw.company.segment,city:raw.company.city,services:raw.keywordProfile?.services??[],neighborhood:raw.keywordProfile?.neighborhood,confirmed:Boolean(raw.keywordProfile)}),keywordProfile:raw.keywordProfile??null,series,ads:adGroups,social:socialFiltered,trends,web:(q.campaign||q.account||q.channel!=='all')?[]:web,funnel,
   attributionCoverage:financeHasData&&customers.length?customers.filter(p=>p.channel!=='unknown'&&p.evidence).length/customers.length*100:null,
   sources:raw.coverage,limitations:[...new Set(errors)],factRevisions:parsed.map(f=>({source:f.source,kind:f.payload.kind,id:f.payload.id,revision:f.revision})),
-  funnelNote:'Etapas atuais das oportunidades criadas no período; não é taxa histórica de passagem. Matrícula registrada no CRM não comprova pagamento.',
+  funnelNote:'Etapas atuais das oportunidades criadas no período; não é taxa histórica de passagem. Conversão registrada no CRM não comprova pagamento.',
   financialNote:'Caixa realizado dos clientes adquiridos no intervalo selecionado. Custos e aquisições no período podem refletir ciclos de venda diferentes. Receita de clientes preexistentes não é usada para inflar retorno. Atribuição observada não prova causalidade.'};
 }
 export function buildDashboard(raw:DashboardRaw,q:DashboardQuery,now=new Date()){

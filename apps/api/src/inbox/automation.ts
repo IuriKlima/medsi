@@ -1,16 +1,18 @@
+import {serviceDatabase} from '../platform/service';
+import {databaseConfigured} from '../platform/config';
 import {Injectable,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
-import {createClient,type SupabaseClient} from '@supabase/supabase-js';
+import {type SupabaseClient} from '@supabase/supabase-js';
 import type {ServiceSettings} from '@askadia/contracts';
 import {draftServiceReply} from './assistant';
 import {decodeThread,evolutionChats,evolutionMessages,record} from './evolution';
 import {evolutionRequest} from '../onboarding/channels';
-export function automationConfigured(){return process.env.INBOX_AUTOMATION_ENABLED==='true'&&Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY&&process.env.EVOLUTION_API_URL&&process.env.EVOLUTION_API_KEY);}
+export function automationConfigured(){return process.env.INBOX_AUTOMATION_ENABLED==='true'&&Boolean(databaseConfigured()&&process.env.EVOLUTION_API_URL&&process.env.EVOLUTION_API_KEY);}
 let lastPoll=0;
 export function automationReady(){return automationConfigured()&&Date.now()-lastPoll<90000;}
 @Injectable()
 export class InboxAutomation implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;private db:SupabaseClient|undefined;
- onModuleInit(){if(!automationConfigured())return;this.db=createClient(process.env.SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});this.timer=setTimeout(()=>void this.tick(),3000);}
+ onModuleInit(){if(!automationConfigured())return;this.db=serviceDatabase();this.timer=setTimeout(()=>void this.tick(),3000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async rpc<T>(name:string,args:Record<string,unknown>={}):Promise<T>{const r=await this.db!.rpc(name,args);if(r.error)throw new Error('Automatic service database unavailable');return r.data as T;}
  private async tick(){try{const targets=await this.rpc<{companyId:string;since:string;instance:string}[]>('inbox_auto_targets');lastPoll=Date.now();for(const target of targets){if(this.stopped)break;try{await this.company(target);}catch{/* A failing company never blocks the other companies. No payloads in logs. */}}}catch{lastPoll=0;}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),15000);}}

@@ -34,3 +34,7 @@ A ordem atual é a da seção 25 do prompt mestre. As etapas antigas nos documen
 ## Revisão de implantação — 27/09/2026
 
 Automação de anúncios estava ausente; agora há implementação local para Meta imagem/tráfego web e Google Pesquisa, com aprovação final, programação, isolamento e reconciliação. Revisão detalhada: [tráfego e implantação](trafego-execucao-2026-09-27.md). A geração de imagem OpenAI foi exercitada com sucesso real; os anúncios continuam sem homologação nas contas dos provedores. Produção está atrás do código local: tabelas de jornada/imagens/execução ausentes e rota nova de anúncios 404. Deploy e migração dependem das sessões corretas do Easypanel/Supabase; Google Ads depende de MCC, OAuth e token aprovado. Não há evidência para declarar todo o sistema pronto para produção.
+
+## Revisão MedSI — 29/09/2026
+
+O projeto contém módulos persistentes de onboarding, estratégia, conteúdo, atendimento, campanhas, CRM e suporte; a matriz inicial acima é histórica. A inspeção para a nova marca encontrou foco fitness em interface, prompts, pesquisa regional e contratos de importação. A adaptação MedSI mantém a arquitetura e os códigos existentes, amplia os segmentos e ajusta a comunicação para médicos e clínicas. Agenda médica, prontuário e avaliação clínica não são funcionalidades entregues por esta mudança. Detalhes, migração incremental, validação e dependências em [análise MedSI](medsi-identidade-2026-09-29.md) e `progress.md`.

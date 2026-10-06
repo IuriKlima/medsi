@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from '../apps/api/src/app';
 import { AuthService,type AuthenticatedActor } from '../apps/api/src/identity/auth';
 import { createCompanyInputSchema } from '../packages/contracts/src/identity';
-import { safeAuthDestination } from '../apps/web/lib/auth/config';
+import { safeAuthDestination } from '../apps/web/lib/auth/destination';
 const company='20000000-0000-4000-8000-000000000001';
 const workspace='20000000-0000-4000-8000-000000000002';
 const user='20000000-0000-4000-8000-000000000003';

@@ -116,3 +116,7 @@ Jornada gratuita antes da IA, checkout simulado por empresa e revisão em cinco 
 ## Atualização de 28/09/2026 — chat e ofertas
 
 Onboarding de aquisição convertido em conversa em tela cheia, com campo fixo e sem rolagem externa. Mensal atualizado para R$ 1.597; semestral substitui o anual nas novas ofertas: R$ 8.000 em até seis parcelas no cartão, com ajuste de centavos na última parcela. Implementação Assistida de R$ 3.500 anunciada como brinde para os 100 primeiros clientes. Checkout continua simulado, sem reserva real de brinde. Migração incremental 202609280001; veja docs/progress.md para validação e implantação. Esta instrução posterior substitui os preços registrados em 27/09.
+
+## MedSI — 29/09/2026
+
+Nova direção solicitada: médicos, clínicas e consultórios, com a identidade MedSI. Aplicação local da marca, páginas, onboarding, orientação de IA, CRM, pesquisa e compatibilidade de importações. Migração incremental 202609290001 preparada; sem aplicação remota ou deploy. Consulte [entrega MedSI](medsi-identidade-2026-09-29.md) e `progress.md` para resultados finais e limites da validação.

@@ -1,3 +1,7 @@
+import {databaseConfigured,firebaseBackend} from './platform/config';
+import {DatabaseLifecycle} from './platform/lifecycle';
+import {RegionalResearchController,RegionalResearchWorker} from './onboarding/regional-research';
+import {MedicalIntakeController} from './onboarding/medical-intake-controller';
 import {SupportController} from './support/controller';
 import {PurchaseController} from './billing/controller';
 import {AdExecutionController,AdExecutionWorker,AdPreparationWorker} from './campaigns/ad-execution';
@@ -29,12 +33,12 @@ import { IdentityController } from './identity/controller';
 import { IdentityService } from './identity/service';
 @Controller()
 export class HealthController {
-  @Get('health') health(){return {status:'ok',service:'askadia-api',mode:process.env.NODE_ENV??'development',authentication:process.env.SUPABASE_URL && (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY) ? 'configured-not-homologated':'not-configured'};}
+  @Get('health') health(){return {status:'ok',service:'medsi-api',mode:process.env.NODE_ENV??'development',databaseProvider:process.env.DATABASE_PROVIDER==='firestore'?'firestore':firebaseBackend()?'firebase-sql-connect':'supabase',database:databaseConfigured()?'configured-not-homologated':'not-configured',authentication:(firebaseBackend()?Boolean(process.env.FIREBASE_PROJECT_ID):Boolean(process.env.SUPABASE_URL&&(process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY)))?'configured-not-homologated':'not-configured'};}
   @Get('integrations') integrations(){return providers.map(provider=>({...provider,status:'unconfigured'}));}
 }
 @Module({
   imports:[DashboardModule],
-  controllers:[SupportController,PurchaseController,AdExecutionController,VisualJobsController,InstagramController,LaunchController,OverviewController,CompanySiteController,PublicSiteController,AdsController,MetaInboxController,CustomerHistoryController,ManagementController,ManagementIngestionController,CampaignsController,InboxController,ChannelsController,CalendarController,OnboardingController,HealthController,IdentityController,OperationsController],
-  providers:[CompetitorResearchWorker,AdPreparationWorker,AdExecutionWorker,VisualJobs,InstagramMonitor,LaunchPreparation,ContentPreparation,ImageDescriptions,CampaignDelivery,InboxAutomation,IdentityService,AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({url:process.env.SUPABASE_URL,key:(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY)})}],
+  controllers:[RegionalResearchController,MedicalIntakeController,SupportController,PurchaseController,AdExecutionController,VisualJobsController,InstagramController,LaunchController,OverviewController,CompanySiteController,PublicSiteController,AdsController,MetaInboxController,CustomerHistoryController,ManagementController,ManagementIngestionController,CampaignsController,InboxController,ChannelsController,CalendarController,OnboardingController,HealthController,IdentityController,OperationsController],
+  providers:[DatabaseLifecycle,RegionalResearchWorker,CompetitorResearchWorker,AdPreparationWorker,AdExecutionWorker,VisualJobs,InstagramMonitor,LaunchPreparation,ContentPreparation,ImageDescriptions,CampaignDelivery,InboxAutomation,IdentityService,AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({provider:process.env.DATABASE_PROVIDER,url:process.env.SUPABASE_URL,key:(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY)})}],
 })
 export class AppModule {}

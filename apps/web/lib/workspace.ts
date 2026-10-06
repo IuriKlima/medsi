@@ -13,7 +13,7 @@ export function addLead(state: LocalWorkspace, companyId: string, fields: { name
 export function moveOpportunity(state: LocalWorkspace, companyId: string, id: string, stage: Opportunity['stage'], reason?: string) {
   const item = state.opportunities.find(o => o.id === id && o.companyId === companyId);
   if (!item) throw new Error('Oportunidade não encontrada nesta empresa.');
-  if (stage === 'Matriculado') throw new Error('A matrícula exige autenticação e evidência operacional. Disponível na etapa de CRM conectado.');
+  if (stage === 'Matriculado') throw new Error('A conversão exige autenticação e evidência operacional. Disponível na etapa de CRM conectado.');
   if (stage === 'Perdido' && !reason?.trim()) throw new Error('Informe o motivo da perda.');
   if (item.stage === stage) return state;
   return { ...state, opportunities: state.opportunities.map(o => o.id !== id ? o : opportunitySchema.parse({ ...o, stage, history: [...o.history, { stage, at: new Date().toISOString(), reason }] })) };

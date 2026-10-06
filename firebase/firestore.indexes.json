@@ -1,0 +1,25 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "company_onboarding",
+      "fieldPath": "facts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "company_onboarding",
+      "fieldPath": "medical_intake",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "company_profile_versions",
+      "fieldPath": "facts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "onboarding_messages",
+      "fieldPath": "body",
+      "indexes": []
+    }
+  ]
+}

@@ -1,8 +1,11 @@
 import 'server-only';
+import {firebaseBackend} from '../firebase/config';
+import {firebaseServerClient} from '../firebase/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { authConfig } from './config';
 export async function serverSupabase(){
+  if(firebaseBackend())return firebaseServerClient();
   const cookieStore=await cookies();
   const {url,key}=authConfig();
   return createServerClient(url,key,{

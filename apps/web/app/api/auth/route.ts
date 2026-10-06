@@ -1,3 +1,5 @@
+import {firebaseBackend} from '../../../lib/firebase/config';
+import {firebaseAuthAction} from '../../../lib/firebase/server';
 import { authRequestSchema } from '@askadia/contracts';
 import { NextResponse } from 'next/server';
 import { serverSupabase } from '../../../lib/auth/server';
@@ -10,6 +12,7 @@ export async function POST(request:Request){
   let parsed;
   try{parsed=authRequestSchema.safeParse(JSON.parse(raw));}catch{return NextResponse.json({message:'Dados inválidos.'},{status:400});}
   if(!parsed.success) return NextResponse.json({message:'Confira os campos.'},{status:400});
+  if(firebaseBackend()){const result=await firebaseAuthAction(parsed.data);return NextResponse.json(result.body,{status:result.status});}
   const {action,email,password,name,inviteToken}=parsed.data;
   const client=await serverSupabase();
   if(action==='logout'){const {error}=await client.auth.signOut();return NextResponse.json(error?{message:'Não foi possível sair. Tente novamente.'}:{ok:true},{status:error?503:200});}

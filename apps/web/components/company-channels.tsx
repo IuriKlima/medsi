@@ -49,7 +49,7 @@ export function CompanyChannels({companyId}:{companyId:string}){
   {error&&<p role="alert" className="form-error">{error}</p>}{message&&<p role="status">{message}</p>}{!data&&!error&&<p>Consultando conexões…</p>}
   {data&&<><section className={styles.moduleCard}><h3>Facebook e Instagram</h3><span className="tag">{session?<><CircleDashed size={16}/>Escolha a Página abaixo</>:connected?<><CircleCheck size={16}/>Conectado</>:<><CircleDashed size={16}/>Autorize no Facebook para escolher a Página</>}</span>
    {connected&&<p>Conta autorizada: <strong>{channel.name}</strong></p>}
-   {!data.metaConfigured&&<p>O aplicativo Meta e o domínio público HTTPS da Askadia precisam estar configurados para habilitar o login.</p>}
+   {!data.metaConfigured&&<p>O aplicativo Meta e o domínio público HTTPS da MedSI precisam estar configurados para habilitar o login.</p>}
    {session&&<section className={meta.picker} aria-busy={pagesLoading} aria-label="Páginas autorizadas"><h4 ref={selector} tabIndex={-1}>Selecione a Página da empresa</h4><p>Escolha qual Página você quer integrar. Nenhuma Página é vinculada automaticamente.</p>
     {pagesLoading?<p role="status">Buscando suas Páginas autorizadas…</p>:pagesError?<p role="alert" className={meta.notice}>{pagesError}</p>:!pages.length?<div className={meta.notice}><strong>Nenhuma Página foi disponibilizada nesta autorização.</strong><p>{missingPagePermission?'A permissão para listar Páginas não foi concedida. Use o botão de conexão abaixo para revisar a autorização.':'Confira se o perfil do Facebook tem acesso à Página e se ela foi incluída na autorização. Você pode revisar os acessos no botão de conexão abaixo.'}</p></div>:<>
      <p>{pages.length} {pages.length===1?'Página disponível':'Páginas disponíveis'}</p>

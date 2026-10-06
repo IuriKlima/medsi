@@ -11,17 +11,21 @@
   "dependencies": {
     "@askadia/contracts": "workspace:*",
     "@askadia/integrations": "workspace:*",
+    "@google-cloud/cloud-sql-connector": "^1.12.0",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
     "@supabase/supabase-js": "^2.116.0",
     "dotenv": "^17.2.0",
+    "firebase-admin": "^14.5.0",
     "openai": "^7.20.0",
+    "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "tsx": "^4.20.0"
   }
 }

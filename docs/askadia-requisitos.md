@@ -1160,3 +1160,6 @@ Decisões ainda abertas: preço do plano superior, franquias, limites de arquivo
 Fora da primeira versão: edição automática de vídeos, financeiro/cancelamento de alunos pela IA, sistema completo de gestão de academia, modelos próprios treinados, todos os tipos de anúncio sem homologação e expansão simultânea para todos os segmentos.
 
 Comece inspecionando o repositório e registrando a auditoria. Em seguida, implemente a fundação e avance na sequência. Preserve os componentes visuais já construídos e transforme cada fluxo em comportamento persistente, autorizado e verificável.
+## Direção vigente — MedSI · 29/09/2026
+
+O pedido atual do usuário substitui a marca Askadia e o foco fitness por MedSI, para médicos, clínicas e consultórios. A identidade de referência usa petróleo #123D46, menta #42D6B0, marfim #F5F7F4 e a assinatura “Sua clínica em sintonia”. O escopo desta adaptação, compatibilidade e dependências estão em [MedSI — análise e identidade](medsi-identidade-2026-09-29.md). As demais regras de segurança, aprovação por versão e homologação continuam válidas. Os requisitos anteriores de preservar o logo e atender academias permanecem somente como histórico.
