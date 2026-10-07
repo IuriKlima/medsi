@@ -38,11 +38,10 @@ export async function journeyRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
   if(ctx.regional?.status!=='ready'||!ctx.regional.snapshot)fail('22023','Aguarde a pesquisa regional.');
   const note=text(args.p_limitations??'',0,1000),data=ctx.regional!.snapshot;
   if(data.map&&!data.map.selectionConfirmed)fail('22023','Confirme a localização e sua seleção de concorrentes antes de aprovar.');
-  // Gaps are recorded automatically in the approved version; a customer note is optional.
   const sources:[string,{state:string}|undefined][]=[['IBGE',data.ibge],['Facebook · público estimado',data.facebook],['Google Trends · interesse',data.trends],['Google Trends · em crescimento',data.topics?.google],['Facebook · assuntos',data.topics?.facebook],['X · assuntos recentes',data.topics?.x],['Mapa e concorrentes',data.map]];
-  const gaps=sources.filter(([,s])=>s&&s.state!=='available').map(([label])=>label);
-  const limitations=[gaps.length?'Fontes indisponíveis nesta versão: '+gaps.join(', ')+'.':'',note].filter(Boolean).join(' ').slice(0,1000);
-  snapshot={regional:displayed.data.regional,limitations,unavailableSources:gaps,profiles:[]};
+  const gaps=sources.filter(([,s])=>s?.state!=='available').map(([label])=>label);
+  if(gaps.length&&!note)fail('22023','Reconheça as fontes indisponíveis antes de aprovar.');
+  snapshot={regional:displayed.data.regional,limitations:note,unavailableSources:gaps,profiles:[]};
  }
  if(stage===2)await approveBrief(tx,actor,ctx,ctx.brief?.id,ctx.brief?.generation);
  if(stage===3||stage===5)validCalendar(ctx.items);

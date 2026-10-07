@@ -1,6 +1,5 @@
 'use client';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import Link from 'next/link';
 import {BarChart3,MapPin,RefreshCw,Users} from 'lucide-react';
 import {Button} from '@askadia/ui';
 import {regionalPointSchema} from '@askadia/contracts';
@@ -34,12 +33,12 @@ export function RegionalAudienceReview({companyId,review,available,write,onChang
     <article className={s.source}><header><h4>Seu território de atendimento</h4><span className={s.sourceTag}>Mapa e concorrentes</span></header>{address&&<p><strong>Endereço confirmado:</strong> {address}</p>}{data.map?<MapReview key={review.id+'_'+review.revision} data={data.map} disabled={!write||busy||collecting} onSearch={map=>void request(true,map)} onSave={ids=>void select(ids)} onDirtyChange={dirtyChanged}/>:<p>Atualize a coleta para incluir o mapa e escolher os concorrentes nesta pesquisa.</p>}</article>
     <article className={s.source}><header><h4>Pesquisas e assuntos relacionados</h4><span className={s.sourceTag}>Fontes e períodos</span></header><p>{data.specialties?.join(' · ')??data.trends.query}</p>
      <section><h5>Google Trends · interesse relativo</h5><p>{data.trends.message}</p><small>{data.trends.region} · {data.trends.period}</small>{data.trends.rows.length>0&&<ol className={s.trends}>{data.trends.rows.slice(0,20).map((row,i)=><li key={row.term+i}><span>{row.term}</span><div><i style={{width:row.interest+'%'}}/></div><strong>{row.interest}</strong></li>)}</ol>}<a href={data.trends.sourceUrl} target="_blank" rel="noreferrer">Consultar Google Trends ↗</a></section>
-     {data.topics&&<><Topics title="Google Trends · pesquisas em crescimento" source={data.topics.google}/></>}
+     {data.topics&&<><Topics title="Google Trends · pesquisas em crescimento" source={data.topics.google}/>{data.topics.facebook&&<Topics title="Facebook · assuntos" source={data.topics.facebook}/>} {data.topics.x&&<Topics title="X · assuntos recentes" source={data.topics.x}/>}</>}
     </article>
    </div>
    <div className={s.researchGrid}>
     <article className={s.source}><header><h4>Perfil da população · IBGE</h4><span className={s.sourceTag}>Município</span></header><p>{data.ibge.message}</p>{data.ibge.data&&<><div className={s.stats}><div><small>Área territorial</small><strong>{number(data.ibge.data.areaKm2)} <em>km²</em></strong></div><div><small>Densidade municipal</small><strong>{number(data.ibge.data.density)} <em>hab./km²</em></strong></div></div><div className={s.breakdowns}><PopulationBars title="Faixas etárias" groups={data.ibge.ages} total={data.ibge.data.population}/><PopulationBars title="Sexo informado no Censo" groups={data.ibge.sex} total={data.ibge.data.population}/></div></>}<a href={data.ibge.sourceUrl} target="_blank" rel="noreferrer">Consultar o IBGE ↗</a></article>
-    
+    <article className={s.source}><header><h4>Facebook · público estimado</h4><span className={s.sourceTag}>Município</span></header><p>{data.facebook?.message??'Estimativas não incluídas nesta pesquisa.'}</p>{data.facebook?.estimates.map(estimate=><div key={estimate.label} className={s.stats}><small>{estimate.label}</small><strong>{estimate.lower===null||estimate.upper===null?'Indisponível':number(estimate.lower)+' a '+number(estimate.upper)}</strong></div>)}{data.facebook?.sourceUrl&&<a href={data.facebook.sourceUrl} target="_blank" rel="noreferrer">Consultar a Meta ↗</a>}</article>
    </div>
   </>}
  </section>;

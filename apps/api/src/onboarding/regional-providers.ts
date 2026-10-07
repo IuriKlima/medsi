@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {brazilStates,type AudienceEstimate,type PopulationGroup,type RegionalAudience,type ProfileFacts} from '@askadia/contracts';
 import {IbgeAdapter} from '../dashboard/market-providers';
 import {collectRegionalTopics} from './regional-topics';
+import {metaGraph} from '../inbox/meta';
 const norm=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
 const category=z.object({id:z.number(),nome:z.string(),nivel:z.number()});
 const metadataSchema=z.object({id:z.literal(9514),classificacoes:z.array(z.object({id:z.number(),nome:z.string(),categorias:z.array(category)}))});
@@ -46,6 +47,14 @@ export class CensusAudienceAdapter{
  }
 }
 type Graph=<T>(path:string,token:string,params?:Record<string,string>)=>Promise<T>;
+const estimateSchema=z.object({estimate_ready:z.boolean(),users_lower_bound:z.number().int().nonnegative().safe().optional(),users_upper_bound:z.number().int().nonnegative().safe().optional()});
+export function parseAudienceEstimate(input:unknown,label:string):AudienceEstimate{
+ const payload=z.object({data:z.union([estimateSchema,z.array(estimateSchema).length(1)])}).parse(input);
+ const estimate=Array.isArray(payload.data)?payload.data[0]!:payload.data;
+ if(!estimate.estimate_ready)return {label,lower:null,upper:null};
+ if(estimate.users_lower_bound===undefined||estimate.users_upper_bound===undefined||estimate.users_lower_bound>estimate.users_upper_bound)throw new Error('META_ESTIMATE_INCOMPLETE');
+ return {label,lower:estimate.users_lower_bound,upper:estimate.users_upper_bound};
+}
 export class FacebookAudienceAdapter{
  constructor(private graph:Graph=metaGraph){}
  async audience(city:string,uf:string,account:string,token:string){
@@ -56,22 +65,26 @@ export class FacebookAudienceAdapter{
   const cityKey=matches[0]!.key;
   const cuts=[{label:'Público adulto · 18 anos ou mais',extra:{}},{label:'18 a 34 anos',extra:{age_min:18,age_max:34}},{label:'35 a 54 anos',extra:{age_min:35,age_max:54}},{label:'55 anos ou mais',extra:{age_min:55}},{label:'Homens · 18 anos ou mais',extra:{genders:[1]}},{label:'Mulheres · 18 anos ou mais',extra:{genders:[2]}}];
   const outcomes=await Promise.allSettled(cuts.map(async cut=>parseAudienceEstimate(await this.graph(account+'/reachestimate',token,{fields:'estimate_ready,users_lower_bound,users_upper_bound',targeting_spec:JSON.stringify({geo_locations:{cities:[{key:cityKey}]},age_min:18,publisher_platforms:['facebook'],...cut.extra})}),cut.label)));
+  if(outcomes[0]?.status==='rejected')throw new Error('META_ESTIMATE_UNAVAILABLE');
   const estimates=outcomes.map((r,i)=>r.status==='fulfilled'?r.value:{label:cuts[i]!.label,lower:null,upper:null});
   return {cityKey,estimates};
  }
 }
-export async function collectRegionalAudience(facts:ProfileFacts,transport:typeof fetch=fetch,onProgress?:(source:'ibge'|'facebook'|'google'|'x',state:'running'|'completed'|'unavailable')=>Promise<void>):Promise<RegionalAudience>{
+type FacebookConnection={account:string;token:string};
+type FacebookProvider=()=>Promise<FacebookConnection|null>;
+export async function collectRegionalAudience(facts:ProfileFacts,facebook:FacebookProvider=async()=>null,transport:typeof fetch=fetch,graph:Graph=metaGraph,onProgress?:(source:'ibge'|'facebook'|'google'|'x',state:'running'|'completed'|'unavailable')=>Promise<void>):Promise<RegionalAudience>{
  const fullCity=facts.city?.value??'',uf=(facts.uf?.value??fullCity.match(/(?:[-,/]\s*)([A-Z]{2})$/)?.[1]??'').toUpperCase(),city=fullCity.replace(/\s*[-,/]\s*[A-Z]{2}$/,'').trim();
  const services=facts.services?.value?.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean)??[];
  const query=services.map(s=>s+' '+city).join('; ');
  if(!city||!Object.hasOwn(brazilStates,uf))throw new Error('CONFIRMED_REGION_REQUIRED');
  const result:RegionalAudience={city,uf,collectedAt:new Date().toISOString(),
   ibge:{state:'unavailable',data:null,sex:[],ages:[],sourceUrl:'https://sidra.ibge.gov.br/tabela/9514',message:'Não foi possível consultar o IBGE. Nenhum valor foi estimado.'},
+  facebook:{state:'unconfigured',estimates:[],sourceUrl:'https://www.facebook.com/business/ads',message:'Conecte uma conta de anúncios Meta autorizada para consultar estimativas municipais. Nenhum anúncio foi criado.',cityKey:null},
     trends:{state:'unconfigured',query,geo:'BR-'+uf,region:'Estado '+uf,period:'Últimos 3 meses',rows:[],sourceUrl:'https://trends.google.com/trends/explore?'+new URLSearchParams({geo:'BR-'+uf,date:'today 3-m',q:query,hl:'pt-BR'}),message:'A coleta de Trends depende do provedor configurado. O link oficial permite consultar o estado; não há dados municipais inventados.'}
  };
  await Promise.all([
   (async()=>{await onProgress?.('ibge','running');try{const adapter=new IbgeAdapter(transport);const town=await adapter.municipality(city,uf);if(!town)return;const summary=await adapter.demographics(String(town.id),uf);result.ibge={...result.ibge,state:'available',data:summary,message:'Censo '+summary.year+' · município inteiro. Não representa somente o bairro ou o raio da clínica.'};if(summary.population!==null){try{const breakdown=await new CensusAudienceAdapter(transport).breakdown(String(town.id),summary.population,summary.year);result.ibge={...result.ibge,...breakdown};}catch{result.ibge.message+=' Distribuição por sexo e idade indisponível nesta coleta.';}}}catch{/* Source remains unavailable, never zero. */}finally{await onProgress?.('ibge',result.ibge.state==='available'?'completed':'unavailable');}})(),
-  (async()=>{await onProgress?.('facebook','running');try{const context=await facebook();const audience=await new FacebookAudienceAdapter(graph).audience(city,uf,context.account,context.token);const current=await facebook();if(current.account!==context.account||current.token!==context.token)throw new Error('META_CONTEXT_CHANGED');const ready=audience.estimates[0]?.lower!==null;result.facebook={...result.facebook,...audience,state:ready?'available':'pending',message:ready?'Estimativas da Meta para pessoas adultas elegíveis a anúncios no Facebook neste município. Não são população residente nem quantidade de pacientes; os recortes não devem ser somados.':'A Meta ainda não calculou uma estimativa para este recorte.'};}catch{result.facebook={...result.facebook,state:'unavailable',message:'Estimativas indisponíveis. Confira a conexão Meta, a conta de anúncios e o acesso de leitura. Nenhum anúncio foi criado.'};}await onProgress?.('facebook',result.facebook.state==='available'?'completed':'unavailable');})(),
+  (async()=>{await onProgress?.('facebook','running');try{const context=await facebook();if(context){const audience=await new FacebookAudienceAdapter(graph).audience(city,uf,context.account,context.token);const current=await facebook();if(!current||current.account!==context.account||current.token!==context.token)throw new Error('META_CONTEXT_CHANGED');const ready=audience.estimates[0]?.lower!==null;result.facebook={...result.facebook!,...audience,state:ready?'available':'pending',message:ready?'Estimativas da Meta para pessoas adultas elegíveis a anúncios no Facebook neste município. Não são população residente nem quantidade de pacientes; os recortes não devem ser somados.':'A Meta ainda não calculou uma estimativa para este recorte.'};}}catch{result.facebook={...result.facebook!,state:'unavailable',estimates:[],cityKey:null,message:'Estimativas indisponíveis. Confira a conexão Meta, a conta de anúncios e o acesso de leitura. Nenhum anúncio foi criado.'};}await onProgress?.('facebook',result.facebook?.state==='available'||result.facebook?.state==='pending'?'completed':'unavailable');})(),
   (async()=>{const collected=await collectRegionalTopics(facts,transport,onProgress);result.specialties=collected.specialties;result.topics=collected.topics;result.trends=collected.trends;})()
  ]);
  result.collectedAt=new Date().toISOString();return result;

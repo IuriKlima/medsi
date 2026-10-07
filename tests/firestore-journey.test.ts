@@ -115,6 +115,22 @@ describe('Firestore guided strategy — '+(emulator?'local emulator':'isolated m
   await expect(approve(1,'')).rejects.toMatchObject({code:'22023'});await approve(1);
   const prior=await journey();await approve(1);expect(await journey()).toEqual(prior);
  });
+ it('accepts absent optional source objects but requires acknowledgment and never adds absent metrics',async()=>{
+  await call('request_regional_research');const job=await value(server.rpc('claim_regional_research_server'));
+  const partial={city:snapshot.city,uf:snapshot.uf,collectedAt:snapshot.collectedAt,ibge:snapshot.ibge,trends:snapshot.trends};
+  await value(server.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:partial}));
+  await expect(approve(1,'')).rejects.toMatchObject({code:'22023'});
+  await approve(1,'Reconheço as fontes ausentes nesta versão.');
+  const approved=await store.run(tx=>tx.get('company_marketing_approvals',company+'_1_1'));
+  expect(approved!.snapshot.regional.data).toEqual(partial);
+  expect(approved!.snapshot.unavailableSources).toContain('Facebook · público estimado');
+ });
+ it('persists a valid empty search response without inventing interest values',async()=>{
+  await call('request_regional_research');const job=await value(server.rpc('claim_regional_research_server'));
+  const empty={...snapshot,trends:{...snapshot.trends,state:'available',rows:[]},topics:{google:{state:'available',query:'Clínica geral São Paulo',region:'SP',period:'Últimos 3 meses',message:'Nenhuma consulta retornada',sourceUrl:'https://trends.google.com',rows:[]}}};
+  expect(await value(server.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:empty}))).toBe(true);
+  expect((await journey()).stages[0].data.regional.data.trends.rows).toEqual([]);
+ });
  it('rejects expired jobs and invalid provider snapshots without publishing them',async()=>{
   await call('request_regional_research');const job=await value(server.rpc('claim_regional_research_server'));
   expect((await server.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:{...snapshot,uf:'RJ'}})).error?.code).toBe('22023');

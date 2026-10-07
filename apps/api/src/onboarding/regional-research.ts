@@ -2,11 +2,10 @@ import {queuePollDelay} from '../platform/queue-polling';
 import {databaseConfigured} from '../platform/config';
 import {Body,Controller,Injectable,Param,Post,Req,UseGuards,BadRequestException,ServiceUnavailableException,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
 import {z} from 'zod';
-import {regionalCompetitorIdPattern,regionalMapRequestSchema,metaAccess,type ProfileFacts,type RegionalMapRequest,type RegionalProgress} from '@askadia/contracts';
+import {regionalCompetitorIdPattern,regionalMapRequestSchema,type ProfileFacts,type RegionalMapRequest,type RegionalProgress} from '@askadia/contracts';
 import {AuthGuard,type AuthRequest} from '../identity/auth';
-import {adsAccess,serviceDb,type AdConnection} from '../campaigns/ads';
+import {adsAccess,serviceDb} from '../campaigns/ads';
 import {result} from '../identity/service';
-import {openChannel} from './channels';
 import {collectRegionalMap} from './regional-map';
 import {collectRegionalAudience} from './regional-providers';
 export const regionalResearchConfigured=()=>process.env.REGIONAL_RESEARCH_ENABLED==='true'&&Boolean(databaseConfigured());
@@ -32,7 +31,8 @@ export class RegionalResearchWorker implements OnModuleInit,OnModuleDestroy{
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:RegionalJob|null=null;let failed=false;
   try{const db=serviceDb();job=result<RegionalJob|null>(await db.rpc('claim_regional_research_server'));if(job&&!this.stopped){const claimed=job;const progress=async(source:RegionalProgress['source'],state:RegionalProgress['state'])=>{if(process.env.DATABASE_PROVIDER==='firestore')result(await db.rpc('progress_regional_research_server',{p_id:claimed.id,p_token:claimed.token,p_source:source,p_state:state}));};
-   const data=await collectRegionalAudience(job.facts,fetch,undefined,progress);
+   // Firestore does not yet expose the company-scoped Meta credential bridge.
+   const data=await collectRegionalAudience(job.facts,async()=>null,fetch,undefined,progress);
    if(process.env.DATABASE_PROVIDER==='firestore'){await progress('map','running');data.map=await collectRegionalMap(data.ibge.data?.municipalityId,job.map,fetch,{facts:job.facts,placesKey:process.env.GOOGLE_PLACES_SERVER_KEY});await progress('map',data.map.state==='unavailable'?'unavailable':'completed');}result(await db.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:data}));}}
   catch{failed=true;if(job)await Promise.resolve(serviceDb().rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:null})).catch(()=>{});}
   finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),queuePollDelay(Boolean(job),failed,7000));}

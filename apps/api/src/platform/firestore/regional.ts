@@ -12,9 +12,9 @@ const url=z.string().url().max(2000).refine(v=>new URL(v).protocol==='https:');
 const positive=z.number().finite().nonnegative();
 const group=z.object({label:z.string().max(150),count:positive});
 const topic=z.object({state:source,query:z.string().max(3000),region:z.string().max(200),period:z.string().max(100),message:z.string().max(2000),sourceUrl:url,rows:z.array(z.object({term:z.string().max(500),specialty:z.string().max(100),metricLabel:z.string().max(200),metricValue:z.number().finite().nonnegative().nullable(),sourceUrl:url})).max(100)});
-const schema=z.object({specialties:z.array(z.string().max(100)).max(20).optional(),topics:z.object({google:topic,facebook:topic,x:topic}).optional(),map:regionalMapSchema.optional(),city:z.string().min(1).max(200),uf:z.string().regex(/^[A-Z]{2}$/),collectedAt:z.iso.datetime(),
+const schema=z.object({specialties:z.array(z.string().max(100)).max(20).optional(),topics:z.object({google:topic,facebook:topic.optional(),x:topic.optional()}).optional(),map:regionalMapSchema.optional(),city:z.string().min(1).max(200),uf:z.string().regex(/^[A-Z]{2}$/),collectedAt:z.iso.datetime(),
  ibge:z.object({state:source,data:z.object({municipalityId:z.string(),municipality:z.string(),uf:z.string(),year:z.string().regex(/^\d{4}$/),population:positive.nullable(),areaKm2:positive.nullable(),density:positive.nullable(),collectedAt:z.iso.datetime(),sourceUrl:url}).nullable(),sex:z.array(group).max(10),ages:z.array(group).max(150),sourceUrl:url,message:z.string().max(2000)}),
- facebook:z.object({state:source,estimates:z.array(z.object({label:z.string().max(150),lower:positive.nullable(),upper:positive.nullable()})).max(30),sourceUrl:url,message:z.string().max(2000),cityKey:z.string().nullable()}),
+ facebook:z.object({state:source,estimates:z.array(z.object({label:z.string().max(150),lower:positive.nullable(),upper:positive.nullable()})).max(30),sourceUrl:url,message:z.string().max(2000),cityKey:z.string().nullable()}).optional(),
  trends:z.object({state:source,query:z.string().max(1000),geo:z.string(),region:z.string().max(200),period:z.string().max(100),rows:z.array(z.object({term:z.string().max(500),interest:positive.max(100)})).max(100),sourceUrl:url,message:z.string().max(2000)})});
 export async function eligible(tx:DocumentTransaction,job:Row){
  const actor:FirestoreActor={role:'authenticated',id:job.actor_id};
@@ -81,9 +81,9 @@ export async function regionalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
  const censusCity=normalize(data.ibge.data?.municipality??'');
  const censusCityMatches=censusCity===normalize(city)||censusCity===normalize(city+' ('+uf+')');
  if(data.ibge.state==='available'&&(!data.ibge.data||data.ibge.data.uf!==uf||!censusCityMatches))fail('22023','Invalid census scope');
- if(data.ibge.state!=='available'&&(data.ibge.data||data.ibge.sex.length||data.ibge.ages.length)||!['available','pending'].includes(data.facebook.state)&&data.facebook.estimates.some(e=>e.lower!==null||e.upper!==null)||data.trends.state!=='available'&&data.trends.rows.length)fail('22023','Unavailable evidence must not contain metrics');
- if(data.facebook.state==='available'&&(!data.facebook.cityKey||!data.facebook.estimates.some(e=>e.lower!==null&&e.upper!==null))||data.trends.state==='available'&&!data.trends.rows.length)fail('22023','Missing provider evidence');
- if(data.facebook.estimates.some(e=>(e.lower===null)!==(e.upper===null)||e.lower!==null&&e.upper!==null&&e.lower>e.upper))fail('22023','Invalid audience range');
+ if(data.ibge.state!=='available'&&(data.ibge.data||data.ibge.sex.length||data.ibge.ages.length)||data.facebook&&!['available','pending'].includes(data.facebook.state)&&data.facebook.estimates.some(e=>e.lower!==null||e.upper!==null)||data.trends.state!=='available'&&data.trends.rows.length)fail('22023','Unavailable evidence must not contain metrics');
+ if(data.facebook?.state==='available'&&(!data.facebook.cityKey||!data.facebook.estimates.some(e=>e.lower!==null&&e.upper!==null)))fail('22023','Missing provider evidence');
+ if(data.facebook?.estimates.some(e=>(e.lower===null)!==(e.upper===null)||e.lower!==null&&e.upper!==null&&e.lower>e.upper))fail('22023','Invalid audience range');
  if(data.ibge.data?.population!==null&&data.ibge.data?.population!==undefined&&[data.ibge.sex,data.ibge.ages].some(groups=>groups.length&&groups.reduce((total,g)=>total+g.count,0)!==data.ibge.data!.population))fail('22023','Census totals do not match');
  if(data.topics){const specialties=String(access.ctx.facts.services?.value??'').split(/[,;\n]/).map(v=>normalize(v));for(const topic of Object.values(data.topics)){if(topic.state!=='available'&&topic.rows.length)fail('22023','Unavailable topics cannot contain metrics');if(topic.rows.some(r=>!specialties.includes(normalize(r.specialty))))fail('22023','Topic specialty changed');}}
  if(job!.map_config&&!data.map)fail('22023','Requested map evidence is missing');

@@ -48,10 +48,10 @@ export async function collectRegionalTopics(facts:ProfileFacts,transport:typeof 
  const geo='BR-'+uf,query=specialties.map(value=>literal(value)+' '+literal(city)).join('; ');
  const region='Consultas com '+city+'; recorte estadual '+uf;
  const base:TopicSource={state:'unconfigured',query,region,period:'Últimos 3 meses',message:'',sourceUrl:trendsLink(query,geo),rows:[]};
- const topics:RegionalTopics={
+ const topics:RegionalTopics&{facebook:TopicSource;x:TopicSource}={
   google:{...base,message:'Google Trends depende do provedor configurado. Consultas citam o município, mas o recorte é estadual; não mede buscas apenas de moradores.'},
-  
-  
+  facebook:{...base,sourceUrl:'https://www.facebook.com/business/ads',message:'Assuntos do Facebook indisponíveis: não há fonte autorizada para este tipo de pesquisa. Nenhuma métrica foi estimada.'},
+  x:{...base,sourceUrl:'https://x.com/search',period:'Últimos 7 dias',message:'A amostra recente do X depende de uma conexão autorizada. Não há dados nesta coleta.'},
  };
  const trends:RegionalAudience['trends']={...topics.google,geo,rows:[]};
  const serpKey=process.env.SERPAPI_API_KEY?.trim(),xToken=process.env.X_BEARER_TOKEN?.trim();

@@ -27,6 +27,31 @@ describe('Regional research after plan confirmation — isolated provider fixtur
   expect(steps).toContainEqual({source:'ibge',state:'unavailable'});
   expect(result.specialties).toEqual(['Cardiologia','Pediatria']);
  });
+ it('keeps disconnected Meta and empty topic feeds without fabricated metrics',async()=>{
+  vi.stubEnv('SERPAPI_API_KEY','fixture');vi.stubEnv('X_BEARER_TOKEN','fixture');
+  const transport:typeof fetch=async input=>new URL(String(input)).hostname==='api.x.com'?Response.json({meta:{result_count:0}}):Response.json({related_queries:{top:[],rising:[]}});
+  const result=await collectRegionalAudience(facts,async()=>null,transport);
+  expect(result.facebook).toMatchObject({state:'unconfigured',estimates:[],cityKey:null});
+  expect(result.topics?.google).toMatchObject({state:'available',rows:[]});
+  expect(result.topics?.x).toMatchObject({state:'pending',rows:[]});
+  expect(result.trends.rows).toEqual([]);
+ });
+ it('records provider timeouts as missing evidence without losing the other sources',async()=>{
+  vi.stubEnv('SERPAPI_API_KEY','fixture');vi.stubEnv('X_BEARER_TOKEN','fixture');
+  const result=await collectRegionalAudience(facts,async()=>null,async()=>{throw new DOMException('Timed out','TimeoutError');});
+  expect(result.ibge).toMatchObject({state:'unavailable',data:null});
+  expect(result.topics?.google).toMatchObject({state:'unavailable',rows:[]});
+  expect(result.topics?.x).toMatchObject({state:'unavailable',rows:[]});
+  expect(result.facebook?.estimates).toEqual([]);
+ });
+ it('discards Meta estimates when the company account changes during collection',async()=>{
+  vi.stubEnv('SERPAPI_API_KEY','');vi.stubEnv('X_BEARER_TOKEN','');
+  let reads=0;
+  const graph=async<T>(path:string):Promise<T>=>(path==='search'?{data:[{key:'123',name:'Sumaré',country_code:'BR',region:'São Paulo'}]}:{data:{estimate_ready:true,users_lower_bound:10,users_upper_bound:20}}) as T;
+  const result=await collectRegionalAudience(facts,async()=>({account:++reads===1?'act_123':'act_456',token:'fixture'}),async()=>{throw Error('IBGE offline');},graph);
+  expect(result.facebook).toMatchObject({state:'unavailable',estimates:[],cityKey:null});
+  expect(JSON.stringify(result)).not.toContain('fixture');
+ });
  it('collects bounded X evidence matching city and specialty without claiming resident counts or growth',async()=>{
   vi.stubEnv('SERPAPI_API_KEY','');vi.stubEnv('X_BEARER_TOKEN','private-fixture-token');
   const calls:URL[]=[];
