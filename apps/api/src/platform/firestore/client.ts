@@ -1,3 +1,8 @@
+import {dashboardRpc,dashboardOperations} from './dashboard';
+import {draftRpc,draftOperations} from './drafts';
+import {supportRpc,supportOperations} from './support';
+import {internalRpc,internalOperations} from './internal';
+import {teamRpc,teamOperations} from './team';
 import {imageDescriptionRpc,imageDescriptionOperations} from './image-descriptions';
 import {commerceRpc,commerceOperations} from './commerce';
 import {journeyRpc,journeyOperations} from './journey';
@@ -19,22 +24,23 @@ import {marketingProfileRpc,marketingProfileOperations} from './marketing-profil
 import {messageCampaignRpc,messageCampaignOperations} from './campaigns';
 import {digitalRpc,digitalOperations} from './digital';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import type {DocumentStore,DocumentTransaction,Row} from './store';
+import type {DocumentStore,DocumentTransaction,Row,ListOptions} from './store';
 import {firestoreStore} from './store';
-import {type FirestoreActor,user,companyAccess,workspaceOwner,fail} from './access';
+import {type FirestoreActor,user,companyAccess,workspaceOwner,manager,fail} from './access';
 import {identityRpc,identityOperations} from './identity';
 import {onboardingRpc,onboardingOperations} from './onboarding';
 import {providerRpc,providerOperations} from './providers';
 import {firestoreStorage,recordAttachment} from './storage';
 import {databaseError,type DatabaseResult} from '../database-client';
 type Filter={column:string;op:string;value:unknown};
-const handlers=[{operations:imageDescriptionOperations,rpc:imageDescriptionRpc},{operations:identityOperations,rpc:identityRpc},{operations:onboardingOperations,rpc:onboardingRpc},{operations:providerOperations,rpc:providerRpc},{operations:commerceOperations,rpc:commerceRpc},{operations:journeyOperations.filter(name=>name!=='move_calendar_date'),rpc:journeyRpc},{operations:regionalOperations,rpc:regionalRpc},{operations:strategyOperations,rpc:strategyRpc},{operations:preparationOperations,rpc:preparationRpc},{operations:contentOperations,rpc:contentRpc},{operations:visualOperations,rpc:visualRpc},{operations:productionOperations,rpc:productionRpc},{operations:billingOperations,rpc:billingRpc},{operations:channelOperations,rpc:channelRpc},{operations:crmOperations,rpc:crmRpc},{operations:inboxOperations,rpc:inboxRpc},{operations:siteOperations,rpc:siteRpc},{operations:advertisingOperations,rpc:advertisingRpc},{operations:digitalOperations,rpc:digitalRpc},{operations:messageCampaignOperations,rpc:messageCampaignRpc},{operations:marketingProfileOperations,rpc:marketingProfileRpc},{operations:socialPublicationOperations,rpc:socialPublicationRpc},{operations:whatsappCloudOperations,rpc:whatsappCloudRpc}];
+const handlers=[{operations:dashboardOperations,rpc:dashboardRpc},{operations:draftOperations,rpc:draftRpc},{operations:supportOperations,rpc:supportRpc},{operations:internalOperations,rpc:internalRpc},{operations:teamOperations,rpc:teamRpc},{operations:imageDescriptionOperations,rpc:imageDescriptionRpc},{operations:identityOperations,rpc:identityRpc},{operations:onboardingOperations,rpc:onboardingRpc},{operations:providerOperations,rpc:providerRpc},{operations:commerceOperations,rpc:commerceRpc},{operations:journeyOperations.filter(name=>name!=='move_calendar_date'),rpc:journeyRpc},{operations:regionalOperations,rpc:regionalRpc},{operations:strategyOperations,rpc:strategyRpc},{operations:preparationOperations,rpc:preparationRpc},{operations:contentOperations,rpc:contentRpc},{operations:visualOperations,rpc:visualRpc},{operations:productionOperations,rpc:productionRpc},{operations:billingOperations,rpc:billingRpc},{operations:channelOperations,rpc:channelRpc},{operations:crmOperations,rpc:crmRpc},{operations:inboxOperations,rpc:inboxRpc},{operations:siteOperations,rpc:siteRpc},{operations:advertisingOperations,rpc:advertisingRpc},{operations:digitalOperations,rpc:digitalRpc},{operations:messageCampaignOperations,rpc:messageCampaignRpc},{operations:marketingProfileOperations,rpc:marketingProfileRpc},{operations:socialPublicationOperations,rpc:socialPublicationRpc},{operations:whatsappCloudOperations,rpc:whatsappCloudRpc}];
 export const firestoreOperations=[...handlers.flatMap(handler=>handler.operations),'record_onboarding_attachment'];
-const companyTables:Record<string,string>={company_onboarding:'marketing.read',onboarding_messages:'marketing.read',onboarding_attachments:'marketing.read',company_profile_versions:'marketing.read',company_profile_impacts:'marketing.read',company_subscriptions:'company.read',company_marketing_approvals:'marketing.read',company_strategy_briefs:'marketing.read',company_content_preparations:'marketing.read',company_content_production_jobs:'marketing.read',company_launch_jobs:'marketing.read',company_regional_research:'marketing.read',company_calendar_items:'marketing.read',company_visual_jobs:'marketing.read',company_creatives:'marketing.read',company_final_videos:'marketing.read'};
+const invitationFields=['id','company_id','email','role','invited_by','expires_at','accepted_at','revoked_at','created_at'];
+const companyTables:Record<string,string>={editorial_drafts:'marketing.read',company_onboarding:'marketing.read',onboarding_messages:'marketing.read',onboarding_attachments:'marketing.read',company_profile_versions:'marketing.read',company_profile_impacts:'marketing.read',company_subscriptions:'company.read',company_marketing_approvals:'marketing.read',company_strategy_briefs:'marketing.read',company_content_preparations:'marketing.read',company_content_production_jobs:'marketing.read',company_launch_jobs:'marketing.read',company_regional_research:'marketing.read',company_calendar_items:'marketing.read',company_visual_jobs:'marketing.read',company_creatives:'marketing.read',company_final_videos:'marketing.read'};
 for(const table of ['company_social_publications','company_calendar_approvals','company_site_jobs','company_calendar_history','company_content_runs','calendar_date_runs','company_sites','company_site_domains','company_site_versions','company_instagram_watches','company_competitor_research','company_ad_connections','company_paid_plans','company_ad_executions','company_ad_plan_seeds'])companyTables[table]='marketing.read';
 for(const table of ['contacts','opportunities','stage_history','company_conversations','company_conversation_notes','company_reply_jobs','company_service_settings','company_quick_replies','inbox_handoffs','inbox_dispatches','inbox_auto_jobs','company_contact_channels','company_service_policies'])companyTables[table]='crm.read';
 const field=(v:string)=>{if(!/^[a-z_][a-z0-9_]*$/.test(v))fail('22023','Invalid field');return v;};
-export async function readRows(tx:DocumentTransaction,actor:FirestoreActor,table:string,filters:Filter[]){
+export async function readRows(tx:DocumentTransaction,actor:FirestoreActor,table:string,filters:Filter[],options?:ListOptions){
  const eq=(key:string)=>filters.find(f=>f.column===key&&f.op==='eq')?.value;
  // Workers may read only explicitly clinic-scoped onboarding materials.
  if(actor.role==='service_role'&&['onboarding_attachments','company_creatives'].includes(table)){
@@ -44,7 +50,23 @@ export async function readRows(tx:DocumentTransaction,actor:FirestoreActor,table
  if(['campaign_students','message_campaigns','message_campaign_deliveries','message_campaign_approvals','message_campaign_versions'].includes(table)){const company=eq('company_id');if(typeof company!=='string')fail('42501','Company scope required');await companyAccess(tx,actor,company as string,'marketing.read');await companyAccess(tx,actor,company as string,'crm.read');return tx.list(table,[{field:'company_id',value:company}]);}
  if(table==='company_channels'){const company=eq('company_id');if(typeof company!=='string')fail('42501','Company scope required');let allowed=false;for(const action of ['marketing.read','crm.read'])try{await companyAccess(tx,actor,company as string,action);allowed=true;break;}catch{/* Try the other scoped capability. */}if(!allowed)fail('42501','Access denied');return tx.list(table,[{field:'company_id',value:company}]);}
  if(table==='profiles')return [await tx.get(table,actorId)].filter((r):r is Row=>Boolean(r));
- if(table==='platform_staff')return [await tx.get(table,actorId)].filter((r):r is Row=>Boolean(r));
+ if(table==='platform_staff'){
+  const own=await tx.get(table,actorId);
+  if(own?.active===true&&own.role==='platform_admin'&&eq('user_id')!==actorId){
+   const allowed=new Set(['user_id','role','active']);return tx.list(table,filters.filter(f=>f.op==='eq'&&allowed.has(f.column)).map(f=>({field:f.column,value:f.value})));
+  }
+  return own?[own]:[];
+ }
+ if(['company_invitations','audit_logs','company_permission_grants'].includes(table)){
+  const company=eq('company_id');if(typeof company!=='string')fail('42501','Company scope required');
+  const access=await companyAccess(tx,actor,company as string);
+  if(table==='company_permission_grants'){
+   const scoped=[{field:'company_id',value:company}];if(!access.owner&&access.member?.role!=='admin')scoped.push({field:'user_id',value:actorId});
+   return tx.list(table,scoped);
+  }
+  await manager(tx,actor,company as string);const rows=await tx.list(table,[{field:'company_id',value:company}],table==='audit_logs'?options:undefined);
+  return table==='company_invitations'?rows.map(row=>Object.fromEntries(invitationFields.map(k=>[k,row[k]]))):rows;
+ }
  if(table==='workspace_members')return tx.list(table,[{field:'user_id',value:actorId}]);
  if(table==='company_members')return tx.list(table,[{field:'user_id',value:actorId}]);
  if(table==='workspaces'){
@@ -82,7 +104,12 @@ export class FirestoreQuery implements PromiseLike<DatabaseResult>{
  private async execute():Promise<DatabaseResult>{
   try{return await this.store.run(async tx=>{
    if(this.procedure){const {name,args}=this.procedure;const handler=handlers.find(handler=>handler.operations.includes(name));const data=handler?await handler.rpc(tx,this.actor,name,args):name==='record_onboarding_attachment'?await recordAttachment(tx,this.actor,args):fail('FIRESTORE_OPERATION_PENDING','Esta operação ainda aguarda migração para o Firestore.');return {data,error:null};}
-   let rows=await readRows(tx,this.actor,this.table!,this.filters);
+   if(this.table==='company_invitations'){
+    const requested=[...(this.fields==='*'?[]:this.fields.split(',').map(f=>f.trim())),...this.filters.map(f=>f.column),...this.orders.map(o=>o.column)];
+    if(requested.some(column=>!invitationFields.includes(column)))fail('42501','Invitation field unavailable');
+   }
+   const latestAudit=this.table==='audit_logs'&&!this.count&&this.orders.length===1&&this.orders[0]!.column==='created_at'&&!this.orders[0]!.ascending&&this.filters.every(f=>f.column==='company_id'&&f.op==='eq')&&this.max>0&&this.offset+this.max<=1000;
+   let rows=await readRows(tx,this.actor,this.table!,this.filters,latestAudit?{orderBy:'created_at',descending:true,limit:this.offset+this.max}:undefined);
    rows=rows.filter(row=>this.filters.every(f=>{const a=row[f.column],b=f.value;if(f.op==='eq'||f.op==='is')return a===b;if(f.op==='neq')return a!==b;if(f.op==='in')return (b as unknown[]).includes(a);if(f.op==='lt')return a<(b as never);if(f.op==='lte')return a<=(b as never);if(f.op==='gt')return a>(b as never);return a>=(b as never);}));
    const count=this.count?rows.length:undefined;
    for(const order of [...this.orders].reverse())rows.sort((a,b)=>(a[order.column]===b[order.column]?0:a[order.column]<b[order.column]?-1:1)*(order.ascending?1:-1));
