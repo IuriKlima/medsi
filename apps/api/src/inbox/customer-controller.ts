@@ -21,8 +21,11 @@ export class CustomerHistoryController {
   const link=result<{remote_id:string}|null>(await db.from('company_contact_channels').select('remote_id').eq('company_id',company).eq('contact_id',contactId).eq('channel','whatsapp').limit(1).maybeSingle());
   let messages:InboxMessage[]=[],warning='',hasMore=false,firstAvailableAt:string|null=null;
   if(link&&validJid(link.remote_id))try{
+   const official=result<{status:string;metadata:{webhookReady?:boolean}|null}|null>(await db.from('company_channels').select('status,metadata').eq('company_id',company).eq('provider','whatsapp_cloud').maybeSingle());
+   if(official){messages=result<InboxMessage[]>(await db.rpc('read_whatsapp_cloud_inbox',{p_company_id:company,p_thread:link.remote_id}));firstAvailableAt=messages.find(m=>m.time)?.time??null;if(official.status!=='connected'||!official.metadata?.webhookReady)warning='O WhatsApp oficial está desconectado. O histórico recebido está disponível.';}else{
    const channel=result<{remote_id:string;status:string}|null>(await db.from('company_channels').select('remote_id,status').eq('company_id',company).eq('provider','evolution').maybeSingle());
    if(channel?.status==='connected'&&channel.remote_id==='askadia-'+company){const recent=await evolutionMessages(channel.remote_id,link.remote_id,1);messages=recent.messages;contact.name=preferredContactName(contact.name,recent.contactName);try{const chat=(await evolutionChats(channel.remote_id)).find(c=>c.id===Buffer.from(link.remote_id).toString('base64url'));contact.name=preferredContactName(contact.name,chat?.name);}catch{/* Keep the CRM name when chat lookup is unavailable. */}hasMore=recent.hasMore;if(recent.totalPages>1){const oldest=await evolutionMessages(channel.remote_id,link.remote_id,recent.totalPages);firstAvailableAt=oldest.messages.find(m=>m.time)?.time??null;}else firstAvailableAt=messages.find(m=>m.time)?.time??null;}else warning='Reconecte o WhatsApp para consultar o histórico.';
+   }
   }catch{warning='Não foi possível consultar o histórico do WhatsApp. Os registros do CRM estão disponíveis.';}
   await authorize();
   return {contact,opportunities,conversations,notes,stages,messages,metrics:{...conversationMetrics(messages),firstAvailableAt},hasMore,warning,thread:link?Buffer.from(link.remote_id).toString('base64url'):null};

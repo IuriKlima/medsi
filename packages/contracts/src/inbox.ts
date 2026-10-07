@@ -10,5 +10,5 @@ export type QuickReply={id:string;shortcut:string;title:string;body:string};
 export type InboxThread={id:string;channel:InboxChannel;name:string;preview:string;time:string|null;unread:number;group:boolean};
 export type InboxMessage={id:string;body:string;fromMe:boolean;time:string|null;kind:string;status:string};
 export type InboxConnection={channel:InboxChannel;connected:boolean;available:boolean;message:string};
-export type InboxBootstrap={connections:InboxConnection[];quickReplies:QuickReply[];settings:ServiceSettings[];canWrite:boolean;canConfigure:boolean;model:string;automaticReady:boolean};
+export type InboxBootstrap={connections:InboxConnection[];quickReplies:QuickReply[];settings:ServiceSettings[];canWrite:boolean;canConfigure:boolean;model:string|null;aiReady?:boolean;automaticReady:boolean};
 export function flowReply(settings:ServiceSettings,text:string){if(settings.flow)return runServiceFlow(settings.flow,text);const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();const rule=settings.rules.find(r=>normalize(text).includes(normalize(r.match)));return rule?{text:rule.reply,handoff:rule.handoff}:{text:settings.fallback||'Vou encaminhar sua mensagem para nossa equipe.',handoff:true};}

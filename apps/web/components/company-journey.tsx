@@ -3,7 +3,7 @@ import {HelpChat} from './help-chat';
 import {MetaBillingNotice} from './meta-billing-notice';
 import {MarketingTasks} from './marketing-tasks';
 import {LaunchPreparation} from './launch-preparation';
-import {InstagramProfiles} from './instagram-profiles';
+import {RegionalCompetitors} from './regional-competitors';
 
 import {BrandWordmark,BrandMark} from './brand';
 
@@ -26,7 +26,7 @@ import styles from './journey.module.css';
 import {CompanySettings} from './company-settings';
 import {companyNavigation,type CompanySettingsTab} from '../lib/company-navigation';
 const navigationIcons:Record<string,typeof LayoutDashboard>={inicio:LayoutDashboard,estrategia:Compass,conteudo:CalendarDays,campanhas:Megaphone,crm:Users,atendimento:MessageCircle,'configuracao-atendimento':SlidersHorizontal,configuracoes:SlidersHorizontal};
-const titles:Record<string,string>={configuracoes:'Minha conta',preparacao:'Preparação da operação',concorrentes:'Concorrentes no Instagram',inicio:'Visão geral',agentes:'Agentes da sua empresa.',estrategia:'Estratégia',conteudo:'Calendário e publicações',campanhas:'Campanhas',crm:'CRM',atendimento:'Conversas da sua empresa.','configuracao-atendimento':'Configuração de Atendimento.',integracoes:'Integrações',site:'Meu site.',assinatura:'Assinatura da empresa.'};
+const titles:Record<string,string>={configuracoes:'Minha conta',preparacao:'Preparação da operação',concorrentes:'Concorrentes da região',inicio:'Visão geral',agentes:'Agentes da sua empresa.',estrategia:'Estratégia',conteudo:'Calendário e publicações',campanhas:'Campanhas',crm:'CRM',atendimento:'Conversas da sua empresa.','configuracao-atendimento':'Configuração de Atendimento.',integracoes:'Integrações',site:'Meu site.',assinatura:'Assinatura da empresa.'};
 export function CompanyJourney({company,area,actions,email,calendarDay,settingsTab='perfil',manageTeam=false,userId,internalHref}:{internalHref?:string;calendarDay?:string;company:{id:string;name:string;timezone:string};area:string;actions:string[];email:string;settingsTab?:CompanySettingsTab;manageTeam?:boolean;userId:string}){
  const [data,setData]=useState<OnboardingSnapshot|null>(null),[error,setError]=useState(''),[mobile,setMobile]=useState(false);
  const marketing=actions.includes('marketing.read'),write=actions.includes('marketing.write'),billing=actions.includes('billing.manage');
@@ -51,7 +51,7 @@ export function CompanyJourney({company,area,actions,email,calendarDay,settingsT
    {area==='inicio'&&data&&<CompanyOverview key={company.id} companyId={company.id} profile={data}/>}
    {area==='agentes'&&<><section className={styles.nextAction}><div className={styles.orb}><BrandMark/></div><div><h2>Conhecer minha empresa</h2><p>Converse, consulte o histórico e atualize as informações que orientam os agentes.</p><Link className="button button-primary" href={base+'/onboarding'}>{complete?'Consultar e atualizar':'Continuar onboarding'}<ArrowRight size={16}/></Link></div></section><section className={styles.moduleCard}><h2>Estratégia e tráfego pago · OpenAI</h2><p>A estratégia começa pelo perfil confirmado. Publicação e orçamento continuam sujeitos às aprovações autorizadas.</p><Link href={base+'/estrategia'}>Preparar o planejamento</Link><h2>Design · GPT Image 2.5 Sunburst</h2><p>Fotos, carrosséis e criativos usam a OpenAI. A geração depende do fluxo de criação, do limite da empresa e da disponibilidade do provedor.</p><Link href={base+'/conteudo'}>Abrir conteúdo</Link></section></>}
    {area==='preparacao'&&<LaunchPreparation companyId={company.id}/>}
-   {area==='concorrentes'&&<InstagramProfiles companyId={company.id}/>}
+   {area==='concorrentes'&&<RegionalCompetitors key={company.id} companyId={company.id} profile={data} write={write}/>}
    {area==='estrategia'&&<GuidedStrategy companyId={company.id} data={data} write={write} approve={actions.includes('strategy.approve')}/>}
    {area==='conteudo'&&<><EditorialCalendar day={calendarDay} key={company.id} companyId={company.id} write={write} approve={actions.includes('content.approve')}/><details className={styles.moduleCard}><summary>Acervo e importação de rascunhos anteriores</summary><DraftImportPanel companyId={company.id} companyName={company.name}/></details></>}
    {area==='configuracoes'&&<CompanySettings company={company} tab={settingsTab} actions={actions} manageTeam={manageTeam} userId={userId} profile={data}/>}

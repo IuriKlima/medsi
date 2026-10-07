@@ -876,3 +876,13 @@ Verificação final desta retomada: `pnpm check` código zero — lint/tipos apr
 - Configuração real continua bloqueada: API informa Firestore/Auth não configurados, ausência de Places/SerpApi, coleta regional habilitada. Nenhuma chave solicitada no chat ou criada; produção protegida, sem deploy/push/publicações/envios/cobranças.
 - Causas, arquivos, capturas, checklist por recurso e instruções seguras: `docs/medsi-competitors-validation-2026-10-07.md`. Esta entrega não comprova prontidão comercial.
 - Verificação final desta rodada: `pnpm check` código 0, lint/tipos e todos os builds aprovados; **709 testes em 84 arquivos, zero falhas**. Log: `/workspace/medsi-evidence/competitors-check-final.txt`. `git diff --check` aprovado.
+
+## 07/10/2026 — correções do fluxo visível, produção e atendimento
+
+- Reproduzido menu Concorrentes que ainda mostrava somente Instagram; conectado à pesquisa/mapa regionais reais, com revisão e retorno à estratégia. Login agora diferencia cadastro demonstrativo de rascunhos antigos. Usuário informou checkout Windows, separado deste ambiente Linux; nenhum push ou sincronismo automático foi presumido.
+- Corrigida falsa conclusão de textos/artes baseada na fila de diagnóstico. Estado deriva de peças/filas da geração atual; perfil anterior não aparece concluído na nova versão. Site usa fila nativa e não mascara recriação/falha com rascunho anterior.
+- Capacidades de geração exigem configuração explícita dos modelos. Atendimento humano/configuração permanece acessível sem IA; histórico oficial não depende de Evolution. Permissões de edição alinhadas entre UI e servidor.
+- Regressões reproduzidas antes de corrigir; revisão independente e correções de versão/site incluídas. `pnpm check` código zero: lint/tipos, **728 testes em 87 arquivos**, todos os builds; `git diff --check` aprovado.
+- Chromium percorreu cadastro demonstrativo e verificou entrada desktop/celular. Harness do componente Concorrentes confirmou três pins pertinentes enquadrados, lateral, seleção/reload/remoção e troca de clínica/nicho com fixtures. Tiles externos falharam. Fluxo autenticado real permanece bloqueado por configuração ausente neste ambiente.
+- Configuração compartilhada por chat não foi instalada nem utilizada. Orientados caminho local Windows, uso seguro de credenciais e substituição de segredos expostos, preservando migração da chave de criptografia. Sem alterações de credenciais, regras/IAM, deploy, merge, dinheiro ou efeitos externos.
+- Evidências, matriz por recurso, causas e instruções: `docs/medsi-flow-validation-2026-10-07.md`; logs/capturas em `/workspace/medsi-evidence/flow-audit`. Ainda não homologado para venda.

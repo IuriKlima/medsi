@@ -1,3 +1,4 @@
+import {CalendarController} from './calendar-controller';
 import {queuePollDelay} from '../platform/queue-polling';
 import {databaseConfigured,firestoreBackend} from '../platform/config';
 import {regionalResearchConfigured} from './regional-research';
@@ -60,7 +61,10 @@ export class LaunchController{
   const [jobs,content]=await Promise.all([r.actor.client.from('company_launch_jobs').select('id,kind,status,error,updated_at,output').eq('company_id',company).eq('profile_version',version).order('kind'),r.actor.client.from('company_content_preparations').select('status,stage,error').eq('company_id',company).eq('profile_version',version).maybeSingle()]);
   if(jobs.error?.code==='PGRST205'||jobs.error?.code==='42P01')throw new ServiceUnavailableException('A preparação completa aguarda a atualização do banco de dados da MedSI.');
   const journey=result<{stages:{approved:boolean}[]}>(await r.actor.client.rpc('read_marketing_journey',{p_company_id:company}));
-  return {approved:journey.stages.length===5&&journey.stages.every(s=>s.approved),profileVersion:version,confirmed:profile.state.confirmed_revision===profile.state.revision,available:launchConfigured(),siteAvailable:sitePreparationConfigured(),proposalOnly:false,contentAvailable:contentPreparationConfigured(),jobs:result<LaunchJob[]>(jobs),content:result(content),canEdit:cap.actions.includes('marketing.write')};
+  const calendar=await new CalendarController().read(r,company);
+  const siteGeneration=firestoreBackend()?result<{status:string;error:string|null}|null>(await r.actor.client.from('company_site_jobs').select('status,error').eq('company_id',company).eq('profile_version',version).order('created_at',{ascending:false}).limit(1).maybeSingle()):null;
+  const site=firestoreBackend()?result<{draft:unknown;profile_version:number}|null>(await r.actor.client.from('company_sites').select('draft,profile_version').eq('company_id',company).maybeSingle()):null;
+  return {approved:journey.stages.length===5&&journey.stages.every(s=>s.approved),profileVersion:version,confirmed:profile.state.confirmed_revision===profile.state.revision,available:launchConfigured(),siteAvailable:sitePreparationConfigured(),production:calendar.production,siteGeneration:siteGeneration??(site?.draft&&site.profile_version===version?{status:'completed',error:null}:null),proposalOnly:false,contentAvailable:contentPreparationConfigured(),jobs:result<LaunchJob[]>(jobs),content:result(content),canEdit:cap.actions.includes('marketing.write')};
  }
  @Post('resume') async resume(@Req() r:AuthRequest,@Param('id') company:string){await adsAccess(r,company,'marketing.write');if(!launchConfigured())throw new ServiceUnavailableException('A preparação aguarda os provedores no servidor.');result(await r.actor.client.rpc('enqueue_company_launch',{p_company_id:company}));if(contentPreparationConfigured())result(await r.actor.client.rpc('enqueue_content_preparation',{p_company_id:company}));return {ok:true};}
 }

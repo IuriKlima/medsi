@@ -2,7 +2,7 @@ export const companySettingsTabs = [
  {id:'perfil',label:'Perfil e marca',actions:['marketing.read'],setup:true},
  {id:'site',label:'Meu site',actions:['marketing.read'],setup:false},
  {id:'integracoes',label:'Integrações',actions:['marketing.read'],setup:true},
- {id:'atendimento',label:'Atendimento',actions:['marketing.write','crm.read'],setup:false},
+ {id:'atendimento',label:'Atendimento',actions:['marketing.write','crm.read'],setup:true},
  {id:'equipe',label:'Equipe e acessos',actions:[],setup:true},
  {id:'assinatura',label:'Assinatura',actions:['billing.manage'],setup:true},
 ] as const;

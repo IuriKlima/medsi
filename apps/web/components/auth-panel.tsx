@@ -34,7 +34,7 @@ export function AuthPanel({configured,callbackError=false,update=false,initialMo
   </fieldset></form>
   {message && <p className={error?'form-error':'auth-message'} role={error?'alert':'status'}>{message}</p>}
   {!update && <div className="auth-switch">{mode==='login'?<>Ainda não tem acesso? <button onClick={()=>change('signup')}>Começar grátis</button></>:<button onClick={()=>change('login')}>Voltar para entrar</button>}</div>}
-  <Link className="auth-preview" href="/preview">Explorar a prévia local<ArrowUpRight size={14}/></Link>
-  <p className="fine-print">A prévia local usa rascunhos de teste. Ela não transfere dados automaticamente para sua conta.</p>
+  <Link className="auth-preview" href="/preview/onboarding">Testar o cadastro demonstrativo<ArrowUpRight size={14}/></Link><Link className="auth-preview" href="/preview">Abrir a prévia de rascunhos<ArrowUpRight size={14}/></Link>
+  <p className="fine-print">As demonstrações não criam conta nem liberam pesquisa, assinatura ou entregas reais. Seus rascunhos anteriores continuam na prévia de rascunhos.</p>
   </div><div className="auth-bottom">PENSADO PARA CRESCER COM VOCÊ.</div></section></main>;
 }
