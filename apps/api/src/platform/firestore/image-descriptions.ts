@@ -1,3 +1,4 @@
+import {queueScan} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import {describableImageTypes,visualDescriptionSchema} from '../../onboarding/image-description-schema';
 import {companyAccess,fail,hash,server,text,uuid,type FirestoreActor} from './access';
@@ -17,9 +18,9 @@ export async function imageDescriptionRpc(tx:DocumentTransaction,actor:Firestore
  server(actor);
  if(name==='claim_image_description_server'){
   const candidates=new Map<string,Row>();
-  for(const status of ['pending','processing'])for(const row of await tx.list(table,[{field:'description_status',value:status}]))candidates.set(row.id,row);
+  for(const status of ['pending','processing'])for(const row of await queueScan(tx,table,[{field:'description_status',value:status}]))candidates.set(row.id,row);
   // Terminal failures and ready history must never exhaust the queue query bound.
-  for(const attempts of [0,1,2])for(const row of await tx.list(table,[{field:'description_status',value:'failed'},{field:'description_attempts',value:attempts}]))candidates.set(row.id,row);
+  for(const attempts of [0,1,2])for(const row of await queueScan(tx,table,[{field:'description_status',value:'failed'},{field:'description_attempts',value:attempts}]))candidates.set(row.id,row);
   // Attachments predating queue defaults require an explicit bounded backfill;
   // polling must not scan every image to find documents without a status field.
   for(const row of [...candidates.values()].sort((a,b)=>(a.description_attempts??0)-(b.description_attempts??0)||String(a.created_at).localeCompare(String(b.created_at)))){

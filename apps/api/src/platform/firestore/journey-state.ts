@@ -1,7 +1,7 @@
 import {classifyRegionalMap} from '@askadia/contracts';
 import {randomUUID} from 'node:crypto';
 import type {DocumentTransaction,Row} from './store';
-import {fail,hash} from './access';
+import {fail,hash,scopedRows} from './access';
 import {defaultPlanningPreferences,planningPreferencesSchema,type PlanningPreferences} from '../../onboarding/planning';
 
 export const now=()=>new Date().toISOString();
@@ -23,9 +23,10 @@ export function digitalResearchCurrent(ctx:{confirmed:boolean;state:Row|null;ver
 }
 export async function context(tx:DocumentTransaction,company:string){
  const state=await tx.get('company_onboarding',company),version=state?.profile_version??0;
- const [profile,index,approvals,traffic,preferences]=await Promise.all([tx.get('company_profile_versions',company+'_'+version),tx.get('company_journey_state',company+'_'+version),tx.list('company_marketing_approvals',scoped(company)),tx.get('company_traffic_preferences',company+'_'+version),tx.get('company_planning_preferences',company+'_'+version)]);
+ const [profile,index,approvals,traffic,preferences]=await Promise.all([tx.get('company_profile_versions',company+'_'+version),tx.get('company_journey_state',company+'_'+version),scopedRows(tx,'company_marketing_approvals',[...scoped(company),{field:'profile_version',value:version}]),tx.get('company_traffic_preferences',company+'_'+version),tx.get('company_planning_preferences',company+'_'+version)]);
  const get=(table:string,id:unknown)=>typeof id==='string'?tx.get(table,id):Promise.resolve(null);
- const [brief,storedRegional,content,recommendations,items,watches,research]=await Promise.all([get('company_strategy_briefs',index?.brief_id),get('company_regional_research',index?.regional_id),get('company_content_preparations',index?.content_id),get('company_launch_jobs',index?.recommendations_id),tx.list('company_calendar_items',scoped(company)),tx.list('company_instagram_watches',scoped(company)),tx.list('company_competitor_research',scoped(company))]);
+ const [brief,storedRegional,content,recommendations,watches,research]=await Promise.all([get('company_strategy_briefs',index?.brief_id),get('company_regional_research',index?.regional_id),get('company_content_preparations',index?.content_id),get('company_launch_jobs',index?.recommendations_id),scopedRows(tx,'company_instagram_watches',scoped(company)),scopedRows(tx,'company_competitor_research',[...scoped(company),{field:'profile_version',value:version}])]);
+ const items=brief?await scopedRows(tx,'company_calendar_items',[...scoped(company),{field:'brief_id',value:brief.id},{field:'generation',value:brief.generation}]):[];
  const regional:Row|null=storedRegional?{...storedRegional,snapshot:storedRegional.status==='stale'||!confirmed(state)?null:storedRegional.snapshot?.map?{...storedRegional.snapshot,map:classifyRegionalMap(storedRegional.snapshot.map,profile?.facts??{})}:storedRegional.snapshot}:null;
  const currentResearch=(r:Row)=>digitalResearchCurrent({confirmed:confirmed(state),state,version,facts:profile?.facts??{},regional},r);
  return {company,state,version,facts:profile?.facts??{},confirmed:confirmed(state)&&Boolean(profile),index,brief,regional,content,recommendations,traffic,planning:planningPreferencesSchema.safeParse(preferences?.settings).data??defaultPlanningPreferences,digital:{profiles:watches.filter(w=>!w.place_id||research.some(r=>r.place_id===w.place_id&&currentResearch(r)&&r.selected_username===w.username)).map(w=>({id:w.id,username:w.username,label:w.label,kind:w.kind,status:w.status,snapshot:w.snapshot??null,error:w.error??null})).sort((a,b)=>a.id.localeCompare(b.id)),research:research.filter(currentResearch).map(r=>({placeId:r.place_id,status:r.status,candidates:r.candidates??[],selectedUsername:r.selected_username??null,collectedAt:r.collected_at??null,error:r.error??null})).sort((a,b)=>a.placeId.localeCompare(b.placeId))},approvals:approvals.filter(a=>a.profile_version===version),items:items.filter(i=>brief&&i.brief_id===brief.id&&i.generation===brief.generation).sort((a,b)=>a.position-b.position)};
@@ -50,7 +51,7 @@ export function stages(ctx:JourneyContext){
 }
 export function approvalThrough(ctx:JourneyContext,n:number){const review=stages(ctx);if(!ctx.confirmed||!review.slice(0,n).every(s=>s.approved))fail('40001','Revise e aprove a versão atual das etapas anteriores.');return ctx.approvals.find(a=>a.stage===n&&!a.invalidated_at)!;}
 export async function invalidate(tx:DocumentTransaction,company:string,version:number,from:number){
- for(const row of await tx.list('company_marketing_approvals',scoped(company)))if(row.profile_version===version&&row.stage>=from&&!row.invalidated_at)tx.put('company_marketing_approvals',row.id,{...row,invalidated_at:now()});
+ for(const row of await scopedRows(tx,'company_marketing_approvals',[...scoped(company),{field:'profile_version',value:version}]))if(row.profile_version===version&&row.stage>=from&&!row.invalidated_at)tx.put('company_marketing_approvals',row.id,{...row,invalidated_at:now()});
  const setup=await tx.get('company_setup',company);if(setup)tx.put('company_setup',company,{...setup,invalidated_at:now()});
 }
 export function validCalendar(items:Row[],planning:PlanningPreferences=defaultPlanningPreferences){

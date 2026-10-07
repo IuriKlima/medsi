@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {createHash} from 'node:crypto';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {metaAccess} from '@askadia/contracts';
@@ -59,13 +60,13 @@ export class RegionalResearchController{
 @Injectable()
 export class RegionalResearchWorker implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(regionalResearchConfigured())this.timer=setTimeout(()=>void this.tick(),6000);}
+ onModuleInit(){if(regionalResearchConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),6000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:RegionalJob|null=null;let failed=false;
   try{const db=serviceDb();job=result<RegionalJob|null>(await db.rpc('claim_regional_research_server'));if(job&&!this.stopped){const claimed=job;const progress=async(source:RegionalProgress['source'],state:RegionalProgress['state'])=>{if(process.env.DATABASE_PROVIDER==='firestore')result(await db.rpc('progress_regional_research_server',{p_id:claimed.id,p_token:claimed.token,p_source:source,p_state:state}));};
    const data=await collectRegionalAudience(job.facts,regionalFacebookProvider(db,job),fetch,undefined,progress);
    if(process.env.DATABASE_PROVIDER==='firestore'){await progress('map','running');const mapOptions={facts:job.facts,placesKey:process.env.GOOGLE_PLACES_SERVER_KEY,persistentEvidence:true};data.map=await collectRegionalMap(data.ibge.data?.municipalityId,job.map,fetch,mapOptions);await progress('map',data.map.state==='unavailable'?'unavailable':'completed');}result(await db.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:data}));}}
   catch{failed=true;if(job)await Promise.resolve(serviceDb().rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:null})).catch(()=>{});}
-  finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),queuePollDelay(Boolean(job),failed,7000));}
+  finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),queuePollDelay(Boolean(job),failed,7000));}
  }
 }

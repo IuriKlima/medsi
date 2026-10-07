@@ -1,3 +1,4 @@
+import {queueStates} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import {launchRecommendationsSchema} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
@@ -28,7 +29,7 @@ export async function preparationRpc(tx:DocumentTransaction,actor:FirestoreActor
  }
  server(actor);
  if(name.startsWith('claim_')){
-  const jobs=[...await tx.list(table,[{field:'status',value:'pending'}]),...await tx.list(table,[{field:'status',value:'running'}])];
+  const jobs=await queueStates(tx,table,['pending','running']);
   for(const job of jobs.filter(due).sort((a,b)=>a.created_at.localeCompare(b.created_at))){
    if(job.kind!==kind)continue;
    const access=await eligible(tx,job);if(!access||!matching(access.ctx,job,kind)){tx.put(table,job.id,stale(job));continue;}

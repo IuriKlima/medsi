@@ -1,3 +1,5 @@
+import {scopedRows} from './store';
+import {queueStates} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import {type FirestoreActor,companyAccess,server,uuid,text,hash,audit,fail} from './access';
 import type {DocumentTransaction,Row} from './store';
@@ -17,14 +19,14 @@ async function media(tx:DocumentTransaction,company:string,asset:Row,original=fa
  return {asset,object,original:object,key,objectPath:asset.object_path,preparedId:null};
 }
 async function sources(tx:DocumentTransaction,company:string,itemId:string,creativeId:string,original=false){
- const [state,item,creative,video,channels]=await Promise.all([tx.get('company_onboarding',company),tx.get('company_calendar_items',itemId),tx.get('company_creatives',creativeId),tx.get('company_final_videos',creativeId),tx.list('company_channels',scoped(company))]);
+ const [state,item,creative,video,channels]=await Promise.all([tx.get('company_onboarding',company),tx.get('company_calendar_items',itemId),tx.get('company_creatives',creativeId),tx.get('company_final_videos',creativeId),scopedRows(tx,'company_channels',scoped(company))]);
  if(!confirmed(state)||!item||item.company_id!==company||item.profile_version!==state!.profile_version||item.approved_revision!==item.revision||item.status!=='approved')throw fail('40001','Approve current calendar content first');
  const ctx=await context(tx,company);if(!ctx.brief||ctx.brief.status!=='approved'||!ctx.items.some(i=>i.id===itemId&&i.revision===item.revision))throw fail('40001','Calendar generation changed');
  const asset=creative??video;if(!asset||asset.company_id!==company||asset.item_id!==itemId||asset.revision!==item.revision)throw fail('40001','Approved creative required');
  const primary=await media(tx,company,asset,original);const selected=[primary];
  if(item.format==='carrossel'&&!original){
   const count=item.details?.slides?.length??0;if(count<2||count>10||asset.frame!==0)throw fail('22023','Carousel requires 2 to 10 image frames and an approved cover');
-  const all=(await tx.list('company_creatives',scoped(company))).filter(a=>a.item_id===itemId&&a.revision===item.revision).sort((a,b)=>String(b.created_at??'').localeCompare(String(a.created_at??''))||String(b.id).localeCompare(String(a.id)));
+  const all=(await scopedRows(tx,'company_creatives',[...scoped(company),{field:'item_id',value:itemId},{field:'revision',value:item.revision}])).sort((a,b)=>String(b.created_at??'').localeCompare(String(a.created_at??''))||String(b.id).localeCompare(String(a.id)));
   for(let frame=1;frame<count;frame++){const next=all.find(a=>a.frame===frame);if(!next)throw fail('40001','All approved carousel frames are required');selected.push(await media(tx,company,next));}
   if(selected.some(m=>m.object.mime!=='image/jpeg'))throw fail('22023','Carousel requires prepared JPEG frames');
  }
@@ -67,12 +69,12 @@ export async function socialPublicationRpc(tx:DocumentTransaction,actor:Firestor
   const company=uuid(args.p_company_id),customer:FirestoreActor={role:'authenticated',id:uuid(args.p_actor)};await companyAccess(tx,customer,company,name==='read_social_media_server'?'marketing.read':'marketing.write');
   if(name==='read_social_media_server'){const row=await tx.get('social_media_assets',text(args.p_id,64,64));if(row?.company_id!==company)throw fail('42501','Media unavailable');return row;}
   const s=await sources(tx,company,uuid(args.p_item_id),uuid(args.p_creative_id),true);
-  if(name==='prepare_social_media_context_server'){let requiredCreativeIds:string[]=[];if(s.item.format==='carrossel'&&s.asset.frame===0){const count=s.item.details?.slides?.length??0;if(count<2||count>10)throw fail('22023','Use 2 to 10 carousel frames');const frames=(await tx.list('company_creatives',scoped(company))).filter(a=>a.item_id===s.item.id&&a.revision===s.item.revision).sort((a,b)=>String(b.created_at??'').localeCompare(String(a.created_at??''))||String(b.id).localeCompare(String(a.id)));requiredCreativeIds=Array.from({length:count-1},(_,i)=>frames.find(a=>a.frame===i+1)?.id);if(requiredCreativeIds.some(id=>!id))throw fail('40001','All carousel frames required');}return {requiredCreativeIds,key:s.key,sourceSha256:s.original.sha256,sourceMime:s.original.mime,sourcePath:s.asset.object_path,targetPath:company+'/social/'+s.key+'.jpg'};}
+  if(name==='prepare_social_media_context_server'){let requiredCreativeIds:string[]=[];if(s.item.format==='carrossel'&&s.asset.frame===0){const count=s.item.details?.slides?.length??0;if(count<2||count>10)throw fail('22023','Use 2 to 10 carousel frames');const frames=(await scopedRows(tx,'company_creatives',[...scoped(company),{field:'item_id',value:s.item.id},{field:'revision',value:s.item.revision}])).sort((a,b)=>String(b.created_at??'').localeCompare(String(a.created_at??''))||String(b.id).localeCompare(String(a.id)));requiredCreativeIds=Array.from({length:count-1},(_,i)=>frames.find(a=>a.frame===i+1)?.id);if(requiredCreativeIds.some(id=>!id))throw fail('40001','All carousel frames required');}return {requiredCreativeIds,key:s.key,sourceSha256:s.original.sha256,sourceMime:s.original.mime,sourcePath:s.asset.object_path,targetPath:company+'/social/'+s.key+'.jpg'};}
   if(args.p_source_sha256!==s.original.sha256||args.p_id!==s.key)throw fail('40001','Source creative changed');const path=company+'/social/'+s.key+'.jpg',object=await tx.get('storage_objects',hash('company-assets/'+path));if(!object||object.company_id!==company||object.status!=='ready'||object.mime!=='image/jpeg')throw fail('40001','Stored derivative required');
   const prepared={id:s.key,company_id:company,item_id:s.item.id,creative_id:s.asset.id,source_sha256:s.original.sha256,object_path:path,sha256:object.sha256,mime:'image/jpeg',conversion:SOCIAL_MEDIA_CONVERSION,created_at:now()};const prior=await tx.get('social_media_assets',s.key);if(prior&&prior.sha256!==prepared.sha256)throw fail('40001','Immutable derivative conflict');tx.put('social_media_assets',s.key,prior??prepared);return prior??prepared;
  }
  if(name==='claim_social_publication_server'){
-  const rows=await tx.list(table);for(const row of rows.sort((a,b)=>String(a.next_attempt_at).localeCompare(String(b.next_attempt_at)))){
+  const rows=await queueStates(tx,table,['approved','processing','reconciling']);for(const row of rows.sort((a,b)=>String(a.next_attempt_at).localeCompare(String(b.next_attempt_at)))){
    if(!['approved','processing','reconciling'].includes(row.status)||live(row)||Date.parse(row.next_attempt_at)>Date.now())continue;if(row.attempts>=8){if(!row.error)tx.put(table,row.id,{...row,status:row.remote?.publishStarted||row.remote?.containerStarted&&!row.remote?.containerId||Object.keys(row.remote??{}).some(k=>/^child\d+Started$/.test(k)&&!row.remote[k.replace('Started','Id')])?'reconciling':'blocked',error:'Automatic observation limit reached. Manual provider review is required.',updated_at:now()});continue;}
    const reconcile=Boolean(row.remote?.publishStarted||row.remote?.containerStarted&&!row.remote?.containerId||Object.keys(row.remote??{}).some(k=>/^child\d+Started$/.test(k)&&!row.remote[k.replace('Started','Id')]));if(!reconcile&&!await valid(tx,row)){tx.put(table,row.id,{...row,status:'stale',error:'Approval, content or account changed',updated_at:now()});continue;}
    const claimed={...row,lease_token:randomUUID(),lease_until:expiry(),attempts:row.attempts+1,updated_at:now()};tx.put(table,row.id,claimed);return {...claimed,reconcileOnly:reconcile};

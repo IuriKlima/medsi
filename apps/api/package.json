@@ -28,5 +28,18 @@
   "devDependencies": {
     "@types/pg": "^8.23.1",
     "tsx": "^4.20.0"
+  },
+  "exports": {
+    "./background": {
+      "types": "./dist/background/bootstrap.d.ts",
+      "default": "./dist/background/bootstrap.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "background": [
+        "dist/background/bootstrap.d.ts"
+      ]
+    }
   }
 }

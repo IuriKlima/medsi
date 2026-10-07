@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {agentModelsConfigured} from '../ai/models';
 import {databaseConfigured} from '../platform/config';
 import {BadRequestException,Body,Controller,Get,Injectable,Param,Post,Req,ServiceUnavailableException,UseGuards,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
@@ -25,12 +26,12 @@ type WatchJob={id:string;companyId:string;token:string;username:string;channel:{
 @Injectable()
 export class InstagramMonitor implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(instagramWatchConfigured())this.timer=setTimeout(()=>void this.tick(),10000);}
+ onModuleInit(){if(instagramWatchConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),10000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:WatchJob|null=null;
   try{const db=serviceDb();job=result<WatchJob|null>(await db.rpc('claim_instagram_watch_server'));if(job){const m=job.channel.metadata;if(m.expiresAt&&Date.parse(m.expiresAt)<=Date.now()||!m.scopes?.includes('instagram_basic')||!m.scopes.includes('pages_read_engagement'))throw new Error('Authorization unavailable');const token=openChannel<{token:string;userToken?:string}>(job.companyId,job.channel.cipher);const snapshot=await inspectInstagram(m.instagramId,token.userToken||token.token,job.username);result(await db.rpc('finish_instagram_watch_server',{p_id:job.id,p_token:job.token,p_snapshot:snapshot}));}}
   catch{if(job)await Promise.resolve(serviceDb().rpc('finish_instagram_watch_server',{p_id:job.id,p_token:job.token,p_snapshot:null})).catch(()=>{});}
-  finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),15000);}
+  finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),15000);}
  }
 }
 
@@ -39,11 +40,11 @@ type ResearchJob={id:string;companyId:string;token:string;query:string;city:stri
 @Injectable()
 export class CompetitorResearchWorker implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(competitorResearchConfigured())this.timer=setTimeout(()=>void this.tick(),5000);}
+ onModuleInit(){if(competitorResearchConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),5000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:ResearchJob|null=null;
   try{const db=serviceDb();job=result<ResearchJob|null>(await db.rpc('claim_competitor_research_server'));if(job){const candidates=await searchInstagram(job.query,job.city);result(await db.rpc('finish_competitor_research_server',{p_id:job.id,p_token:job.token,p_candidates:candidates}));}}
   catch{if(job)await Promise.resolve(serviceDb().rpc('finish_competitor_research_server',{p_id:job.id,p_token:job.token,p_candidates:null})).catch(()=>{});}
-  finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),5000);}
+  finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),5000);}
  }
 }

@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import type {DocumentTransaction,Row} from './store';
-import {type FirestoreActor,server,user,text,uuid,hash,workspaceOwner,companyAccess,manager,audit,fail,capabilities} from './access';
+import {type FirestoreActor,server,user,text,uuid,hash,workspaceOwner,companyAccess,manager,audit,fail,capabilities,scopedRows} from './access';
 const now=()=>new Date().toISOString();
 async function currentCustomerCompany(tx:DocumentTransaction,actor:FirestoreActor){
  const actorId=user(actor),profile=await tx.get('profiles',actorId);
@@ -10,10 +10,10 @@ async function currentCustomerCompany(tx:DocumentTransaction,actor:FirestoreActo
  // first-clinic transactions retry and observe the winning clinic.
  tx.put('profiles',actorId,{...profile,company_creation_checked_at:now()});
  if((await tx.get('platform_staff',actorId))?.active)return null;
- const workspaces=await tx.list('workspace_members',[{field:'user_id',value:actorId}]);
- const memberships=await tx.list('company_members',[{field:'user_id',value:actorId}]);
+ const workspaces=await scopedRows(tx,'workspace_members',[{field:'user_id',value:actorId},{field:'role',value:'owner'}]);
+ const memberships=await scopedRows(tx,'company_members',[{field:'user_id',value:actorId}]);
  const candidates=new Map<string,Row>();
- for(const membership of workspaces.filter(m=>m.role==='owner'))for(const company of await tx.list('companies',[{field:'workspace_id',value:membership.workspace_id}]))candidates.set(company.id,company);
+ for(const membership of workspaces.filter(m=>m.role==='owner'))for(const company of await scopedRows(tx,'companies',[{field:'workspace_id',value:membership.workspace_id}]))candidates.set(company.id,company);
  for(const membership of memberships){const company=await tx.get('companies',membership.company_id);if(company)candidates.set(company.id,company);}
  for(const company of [...candidates.values()].filter(c=>!c.archived_at).sort((a,b)=>String(a.created_at??'').localeCompare(String(b.created_at??''))||a.id.localeCompare(b.id))){
   try{await companyAccess(tx,actor,company.id);return company;}
@@ -52,10 +52,10 @@ export async function beginCompany(tx:DocumentTransaction,actor:FirestoreActor,a
  // A read of the profile serializes simultaneous first-workspace requests.
  const profile=await tx.get('profiles',actorId);if(!profile)fail('42501','Profile unavailable');
  let w=requested;
- if(!w){const memberships=await tx.list('workspace_members',[{field:'user_id',value:actorId}]);w=memberships.find(m=>m.role==='owner')?.workspace_id??await createWorkspace(tx,actor,'Minhas clínicas');}
+ if(!w){const memberships=await scopedRows(tx,'workspace_members',[{field:'user_id',value:actorId},{field:'role',value:'owner'}]);w=memberships.find(m=>m.role==='owner')?.workspace_id??await createWorkspace(tx,actor,'Minhas clínicas');}
  await workspaceOwner(tx,actor,w!);
  const workspace=await tx.get('workspaces',w!);tx.put('workspaces',w!,{...workspace,updated_at:now()});tx.put('profiles',actorId,{...profile,last_workspace_id:w});
- const companies=await tx.list('companies',[{field:'workspace_id',value:w}]);let company:Row|null=null;
+ const companies=await scopedRows(tx,'companies',[{field:'workspace_id',value:w},{field:'name',value:'Nova clínica'}]);let company:Row|null=null;
  for(const c of companies){if(c.archived_at||c.name!=='Nova clínica')continue;const state=await tx.get('company_onboarding',c.id);if(state?.revision===0){company=c;break;}}
  company??=await createCompany(tx,actor,{p_workspace_id:w,p_name:'Nova clínica',p_segment:'clinic',p_city:'',p_timezone:'America/Sao_Paulo'});
  tx.put('company_creation_requests',requestKey,{actor_id:actorId,request_id:request,requested_workspace:requested,workspace_id:w,company_id:company.id,created_at:now()});return {companyId:company.id,workspaceId:w,resumed:false};

@@ -1,3 +1,5 @@
+import {scopedRows} from './store';
+import {queueScan,queueStates,queueHasMore} from './queue-scan';
 import {z} from 'zod';
 import {randomUUID} from 'node:crypto';
 import {serviceSettingsSchema,quickReplySchema,inboxChannelSchema} from '@askadia/contracts';
@@ -7,10 +9,10 @@ import {purchaseState} from './commerce';
 export const inboxOperations=['read_service_policy','save_service_policy','save_contact_consent','inbox_record_opt_out','save_service_settings','save_quick_reply','take_inbox_conversation','release_inbox_conversation','reserve_inbox_dispatch','reserve_meta_dispatch','finish_inbox_dispatch','inbox_ai_context','inbox_prompt_context','inbox_auto_targets','inbox_auto_claim','inbox_auto_prepare','inbox_auto_finish','inbox_auto_observe_human'];
 const now=()=>new Date().toISOString();
 const key=(company:string,channel:string,thread:string)=>company+'_'+channel+'_'+hash(thread);
-const list=(tx:DocumentTransaction,table:string,company:string)=>tx.list(table,[{field:'company_id',value:company}]);
+const list=(tx:DocumentTransaction,table:string,company:string)=>scopedRows(tx,table,[{field:'company_id',value:company}]);
 export async function serviceProfile(tx:DocumentTransaction,company:string){const state=await tx.get('company_onboarding',company);if(!state||state.profile_version<1||state.confirmed_revision!==state.revision)return null;const facts=(await tx.get('company_profile_versions',company+'_'+state.profile_version))?.facts;if(!facts)return null;return Object.fromEntries(Object.entries(facts).filter(([field])=>['name','businessType','city','address','services','structure','hours','offers','channels','sales'].includes(field)));}
 async function connected(tx:DocumentTransaction,company:string,channel:string,allowOfficial=false){return (await list(tx,'company_channels',company)).some(c=>c.status==='connected'&&(c.provider===(channel==='whatsapp'?'evolution':'meta')&&(channel!=='whatsapp'||c.remote_id==='askadia-'+company)||allowOfficial&&channel==='whatsapp'&&c.provider==='whatsapp_cloud'&&c.metadata?.webhookReady===true));}
-async function cancelGenerating(tx:DocumentTransaction,company:string,thread?:string){for(const j of await list(tx,'inbox_auto_jobs',company))if(j.state==='generating'&&(!thread||j.thread===thread))tx.put('inbox_auto_jobs',j.id,{...j,state:'canceled',updated_at:now()});}
+async function cancelGenerating(tx:DocumentTransaction,company:string,thread?:string){for(const j of await tx.list('inbox_auto_jobs',[{field:'company_id',value:company},{field:'state',value:'generating'},...(thread?[{field:'thread',value:thread}]:[])],{limit:100}))tx.put('inbox_auto_jobs',j.id,{...j,state:'canceled',updated_at:now()});}
 async function handoff(tx:DocumentTransaction,company:string,channel:string,thread:string,actor:string|null){const id=key(company,channel,thread),prior=await tx.get('inbox_handoffs',id),row={id,company_id:company,channel,thread,actor_id:actor,released_at:null,revision:(prior?.revision??0)+1,updated_at:now()};tx.put('inbox_handoffs',id,row);await cancelGenerating(tx,company,thread);return row;}
 export async function inboxRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row):Promise<unknown>{
  if(name==='inbox_record_opt_out'){server(actor);const company=uuid(args.p_company_id),thread=text(args.p_thread,1,200);if(!await tx.get('companies',company))fail('42501','Company unavailable');const contacts=await list(tx,'contacts',company),links=await list(tx,'company_contact_channels',company);const contact=contacts.find(c=>c.phone_e164==='+'+thread.split('@')[0]||links.some(l=>l.contact_id===c.id&&l.remote_id===thread));if(contact)tx.put('contacts',contact.id,{...contact,consent:false,opted_out:true,consent_updated_at:now()});await handoff(tx,company,'whatsapp',thread,null);return null;}
@@ -75,7 +77,7 @@ export async function inboxRpc(tx:DocumentTransaction,actor:FirestoreActor,name:
 }
 /** A service window belongs to the official sender number that received it. */
 export async function officialServiceWindow(tx:DocumentTransaction,company:string,phoneId:string,thread:string){
- return (await list(tx,'whatsapp_cloud_messages',company)).some(m=>m.phone_id===phoneId&&m.thread===thread&&!m.from_me&&Date.parse(m.expires_at)>Date.now()&&Date.parse(m.time)>=Date.now()-86400000&&Date.parse(m.time)<=Date.now()+60000);
+ return (await scopedRows(tx,'whatsapp_cloud_messages',[{field:'company_id',value:company},{field:'phone_id',value:phoneId},{field:'thread',value:thread}])).some(m=>!m.from_me&&Date.parse(m.expires_at)>Date.now()&&Date.parse(m.time)>=Date.now()-86400000&&Date.parse(m.time)<=Date.now()+60000);
 }
 /** Administrative automations require an explicit server-persisted policy and
  * contact consent. Missing/invalid hours, timezone or consent fail closed. */
@@ -90,25 +92,25 @@ export async function automationAllowed(tx:DocumentTransaction,company:string,se
  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:policy.timezone,weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()),get=(type:string)=>parts.find(p=>p.type===type)?.value??'',day=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(get('weekday')),minute=Number(get('hour'))*60+Number(get('minute'));
   if(!Array.isArray(policy.hours)||!policy.hours.some((h:Row)=>h.day===day&&Number.isInteger(h.start)&&Number.isInteger(h.end)&&h.start>=0&&h.end<=1440&&h.start<h.end&&minute>=h.start&&minute<h.end))return false;
  }catch{return false;}
- if(thread){const links=await list(tx,'company_contact_channels',company),contact=(await list(tx,'contacts',company)).find(c=>links.some(l=>l.contact_id===c.id&&l.remote_id===thread)||c.whatsapp_jid===thread||c.phone_e164==='+'+thread.split('@')[0]);if(!contact||contact.consent!==true||contact.opted_out===true||contact.opt_out===true)return false;}
+ if(thread){const links=await tx.list('company_contact_channels',[{field:'company_id',value:company},{field:'remote_id',value:thread}],{limit:1}),linked=links[0]?await tx.get('contacts',links[0].contact_id):null,contact=linked?.company_id===company?linked:(await tx.list('contacts',[{field:'company_id',value:company},{field:'whatsapp_jid',value:thread}],{limit:1}))[0]??(await tx.list('contacts',[{field:'company_id',value:company},{field:'phone_e164',value:'+'+thread.split('@')[0]}],{limit:1}))[0];if(!contact||contact.consent!==true||contact.opted_out===true||contact.opt_out===true)return false;}
  return true;
 }
 async function autoRpc(tx:DocumentTransaction,name:string,args:Row):Promise<unknown>{
  if(name==='inbox_auto_targets'){
-  const jobs=await tx.list('inbox_auto_jobs');for(const j of jobs)if(['generating','dispatching'].includes(j.state)&&Date.parse(j.updated_at)<Date.now()-120000)tx.put('inbox_auto_jobs',j.id,{...j,state:j.state==='dispatching'?'uncertain':'failed',updated_at:now()});
-  const targets=[];for(const s of await tx.list('company_service_settings'))if(s.channel==='whatsapp'&&await automationAllowed(tx,s.company_id,s)){const channel=(await list(tx,'company_channels',s.company_id)).find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady);targets.push(channel?{companyId:s.company_id,since:s.enabled_since,instance:'cloud-'+s.company_id,provider:'whatsapp_cloud',phoneId:channel.remote_id,actorId:s.automated_by}:{companyId:s.company_id,since:s.enabled_since,instance:'askadia-'+s.company_id,provider:'evolution'});}return targets;
+  const jobs=await queueStates(tx,'inbox_auto_jobs',['generating','dispatching'],'state');for(const j of jobs)if(['generating','dispatching'].includes(j.state)&&Date.parse(j.updated_at)<Date.now()-120000)tx.put('inbox_auto_jobs',j.id,{...j,state:j.state==='dispatching'?'uncertain':'failed',updated_at:now()});
+  const targets=[];for(const s of await queueScan(tx,'company_service_settings',[{field:'channel',value:'whatsapp'}],'targets'))if(s.channel==='whatsapp'&&await automationAllowed(tx,s.company_id,s)){const channel=(await list(tx,'company_channels',s.company_id)).find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady);targets.push(channel?{companyId:s.company_id,since:s.enabled_since,instance:'cloud-'+s.company_id,provider:'whatsapp_cloud',phoneId:channel.remote_id,actorId:s.automated_by}:{companyId:s.company_id,since:s.enabled_since,instance:'askadia-'+s.company_id,provider:'evolution'});}return args.p_paginated===true?{targets,hasMore:queueHasMore(tx,'company_service_settings','targets')}:targets;
  }
  const company=uuid(args.p_company_id);if(!await tx.get('companies',company))fail('42501','Company unavailable');
  const settings=await tx.get('company_service_settings',company+'_whatsapp'),message=text(args.p_message_id,1,200),id=company+'_'+hash(message),job=await tx.get('inbox_auto_jobs',id);
  if(name==='inbox_auto_claim'){
   const thread=text(args.p_thread,1,200),time=Date.parse(args.p_time);if(!/^[0-9]{6,20}@(s\.whatsapp\.net|lid)$/.test(thread)||!Number.isFinite(time)||time<=Date.parse(settings?.enabled_since)||time<Date.now()-300000||time>Date.now()+60000||job||!await automationAllowed(tx,company,settings,thread))return null;
   const h=await tx.get('inbox_handoffs',key(company,'whatsapp',thread));if(h&&(!h.released_at||time<=Date.parse(h.released_at)))return null;
-  const jobs=await list(tx,'inbox_auto_jobs',company);if(jobs.some(j=>j.thread===thread&&['generating','dispatching','uncertain'].includes(j.state))||jobs.filter(j=>j.created_at.slice(0,10)===now().slice(0,10)).length>=100)return null;
+  for(const state of ['generating','dispatching','uncertain'])if((await tx.list('inbox_auto_jobs',[{field:'company_id',value:company},{field:'thread',value:thread},{field:'state',value:state}],{limit:1})).length)return null;const jobs=await tx.list('inbox_auto_jobs',[{field:'company_id',value:company}],{limit:100,orderBy:'created_at',descending:true});if(jobs.filter(j=>j.created_at.slice(0,10)===now().slice(0,10)).length>=100)return null;
   const token=randomUUID(),profile=await tx.get('company_onboarding',company),channel=(await list(tx,'company_channels',company)).find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady);tx.put('inbox_auto_jobs',id,{id,company_id:company,message_id:message,thread,revision:settings!.revision,profile_version:profile!.profile_version,provider:channel?'whatsapp_cloud':'evolution',phone_id:channel?.remote_id??null,token,state:'generating',body:null,provider_id:null,handoff:false,created_at:now(),updated_at:now()});return {token,provider:channel?'whatsapp_cloud':'evolution',phoneId:channel?.remote_id??null,settings,profile:await serviceProfile(tx,company)};
  }
  if(name==='inbox_auto_observe_human'){
   const thread=text(args.p_thread,1,200),time=Date.parse(args.p_time);if(!Number.isFinite(time)||time<=Date.parse(settings?.enabled_since)||time>Date.now()+60000||!(settings?.automatic))return null;
-  if((await list(tx,'inbox_auto_jobs',company)).some(j=>j.provider_id===message))return null;const h=await tx.get('inbox_handoffs',key(company,'whatsapp',thread));if(h&&(!h.released_at||Date.parse(h.released_at)>=time))return null;await handoff(tx,company,'whatsapp',thread,null);return null;
+  if((await tx.list('inbox_auto_jobs',[{field:'company_id',value:company},{field:'provider_id',value:message}],{limit:1})).length>0)return null;const h=await tx.get('inbox_handoffs',key(company,'whatsapp',thread));if(h&&(!h.released_at||Date.parse(h.released_at)>=time))return null;await handoff(tx,company,'whatsapp',thread,null);return null;
  }
  if(!job||job.token!==uuid(args.p_token))return name==='inbox_auto_prepare'?false:null;
  if(name==='inbox_auto_prepare'){

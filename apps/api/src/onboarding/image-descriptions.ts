@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {databaseConfigured} from '../platform/config';
 import {Injectable,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
 import {z} from 'zod';
@@ -15,14 +16,15 @@ export async function describeImage(bytes:Buffer,mime:string){
  const text=output.candidates?.[0]?.content?.parts?.map(p=>p.text??'').join('');
  return {description:visualDescriptionSchema.parse(JSON.parse(text??'')),model};
 }
+export const imageDescriptionsConfigured=()=>process.env.IMAGE_DESCRIPTIONS_ENABLED==='true'&&Boolean(process.env.GEMINI_API_KEY&&databaseConfigured());
 @Injectable()
 export class ImageDescriptions implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(process.env.IMAGE_DESCRIPTIONS_ENABLED!=='true'||!process.env.GEMINI_API_KEY||!databaseConfigured())return;this.timer=setTimeout(()=>void this.tick(),5000);}
+ onModuleInit(){if(!imageDescriptionsConfigured())return;this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),5000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){const db=serviceDb();let job:{id:string;companyId:string;path:string;mime:string;token:string}|null=null;
  try{const r=await db.rpc('claim_image_description_server');if(r.error)throw new Error('Description queue unavailable');job=r.data;if(job){const image=await db.storage.from('company-assets').download(job.path);if(image.error||!image.data)throw new Error('Image unavailable');const result=await describeImage(Buffer.from(await image.data.arrayBuffer()),job.mime);const saved=await db.rpc('finish_image_description_server',{p_company_id:job.companyId,p_id:job.id,p_token:job.token,p_description:result.description,p_model:result.model});if(saved.error)throw new Error('Description persistence unavailable');}}
  catch{if(job)await Promise.resolve(db.rpc('finish_image_description_server',{p_company_id:job.companyId,p_id:job.id,p_token:job.token,p_description:null,p_model:null})).catch(()=>{});}
- finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),10000);}}
+ finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),10000);}}
 }
 // Persisted jobs survive application restarts.

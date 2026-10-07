@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {importSchema} from '@askadia/contracts';
 import {audit,companyAccess,fail,hash,text,user,uuid,type FirestoreActor} from './access';
 import {requireInternalSession} from './internal';
-import type {DocumentTransaction,Row} from './store';
+import {scopedRows,type DocumentTransaction,type Row} from './store';
 import type {DashboardRaw} from '../../dashboard/engine';
 
 export const dashboardOperations=['dashboard_read','dashboard_import','dashboard_set_keywords','dashboard_record_export'];
@@ -18,7 +18,7 @@ async function access(tx:DocumentTransaction,actor:FirestoreActor,companyId:stri
  let memberAccess:Awaited<ReturnType<typeof companyAccess>>|null=null;
  try{memberAccess=await companyAccess(tx,actor,companyId);}catch(error){if((error as Row).code!=='42501')throw error;}
  const owner=memberAccess?.owner===true,actions=memberAccess?.actions??[];
- const permission=memberAccess?.member?(await tx.list('dashboard_permissions',scope(companyId))).find(p=>p.user_id===actorId):null;
+ const permission=memberAccess?.member?(await tx.list('dashboard_permissions',[...scope(companyId),{field:'user_id',value:actorId}],{limit:1}))[0]:null;
  const permissions={digital:owner||actions.includes('marketing.read'),finance:owner||permission?.financial_details===true,writeDigital:owner||actions.includes('marketing.write'),writeFinance:owner||(permission?.financial_details===true&&permission.manage_costs===true)};
  // A supplied session is relevant only where it supplies otherwise absent read access.
  if(internalSession!==null&&internalSession!==undefined&&(!permissions.digital||!permissions.finance)){
@@ -29,8 +29,8 @@ async function access(tx:DocumentTransaction,actor:FirestoreActor,companyId:stri
 async function read(tx:DocumentTransaction,actor:FirestoreActor,companyId:string,internalSession:unknown):Promise<DashboardRaw>{
  const allowed=await access(tx,actor,companyId,internalSession),{company,permissions}=allowed;
  if(!permissions.digital&&!permissions.finance)return fail('42501','Dashboard access denied');
- const [facts,imports,opportunities,keywords]=await Promise.all([tx.list('dashboard_facts',scope(companyId)),tx.list('dashboard_imports',scope(companyId)),tx.list('opportunities',scope(companyId)),permissions.digital?tx.get('dashboard_keyword_profiles',companyId):null]);
- if(facts.length>10000||opportunities.length>10000)fail('54000','Dashboard aggregation requires pagination above 10000 records');
+ const [facts,imports,opportunities,keywords]=await Promise.all([scopedRows(tx,'dashboard_facts',scope(companyId),10001),scopedRows(tx,'dashboard_imports',scope(companyId),10001),allowed.crm?scopedRows(tx,'opportunities',scope(companyId),10001):[],permissions.digital?tx.get('dashboard_keyword_profiles',companyId):null]);
+ if(facts.length>10000||imports.length>10000||opportunities.length>10000)fail('54000','Dashboard aggregation requires pagination above 10000 records');
  const visible=(row:Row)=>row.domain==='finance'?permissions.finance:permissions.digital;
  const coverage=new Map<string,Row>();
  for(const row of imports.filter(visible).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))){const key=hash([row.source,row.domain,row.coverage_start,row.coverage_end]);if(!coverage.has(key))coverage.set(key,row);}

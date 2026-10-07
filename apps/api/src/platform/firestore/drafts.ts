@@ -20,7 +20,7 @@ export async function draftRpc(tx:DocumentTransaction,actor:FirestoreActor,name:
   if(await tx.get('local_draft_imports',mappingKey('contact',item.id))){counts.skipped++;continue;}
   const phone=item.phone.trim()||null;
   if(phone&&!/^\+[1-9][0-9]{9,14}$/.test(phone))fail('22023','Invalid phone');
-  const existing=phone?(await tx.list('contacts',[{field:'company_id',value:companyId},{field:'phone_e164',value:phone}]))[0]:null;
+  const existing=phone?(await tx.list('contacts',[{field:'company_id',value:companyId},{field:'phone_e164',value:phone}],{limit:1}))[0]:null;
   const recordId=existing?.id??randomUUID();
   if(existing)counts.skipped++;else{
    tx.put('contacts',recordId,{id:recordId,company_id:companyId,name:item.name.trim(),phone_e164:phone,email:item.email.trim()||null,consent:false,opted_out:false,created_at:now()});counts.contacts++;

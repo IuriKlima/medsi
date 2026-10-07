@@ -1,6 +1,7 @@
 import {subscriptionEntitlement} from './billing';
 import {createHash,randomUUID} from 'node:crypto';
-import type {DocumentTransaction,Row} from './store';
+import {scopedRows,type DocumentTransaction,type Row} from './store';
+export {scopedRows} from './store';
 export type FirestoreActor={role:'authenticated'|'service_role'|'anon';id:string|null};
 export const fail=(code:string,message:string):never=>{throw Object.assign(new Error(message),{code});};
 export const text=(value:unknown,min=1,max=500)=>{if(typeof value!=='string'||value.trim().length<min||value.length>max)fail('22023','Invalid field');return (value as string).trim();};
@@ -17,7 +18,7 @@ export async function companyAccess(tx:DocumentTransaction,actor:FirestoreActor,
  const [owner,member]=await Promise.all([tx.get('workspace_members',company!.workspace_id+'_'+actorId),tx.get('company_members',id+'_'+actorId)]);
  let allowed=owner?.role==='owner'?[...actions]:[...(roleActions[String(member?.role)]??[])];
  // Revoked company members cannot retain a delegated grant.
- if(member){const grants=await tx.list('company_permission_grants',[{field:'company_id',value:id}]);allowed=[...new Set([...allowed,...grants.filter(g=>g.user_id===actorId&&(!g.expires_at||Date.parse(g.expires_at)>Date.now())).map(g=>String(g.action))])];}
+ if(member){const grants=await scopedRows(tx,'company_permission_grants',[{field:'company_id',value:id},{field:'user_id',value:actorId}]);allowed=[...new Set([...allowed,...grants.filter(g=>g.user_id===actorId&&(!g.expires_at||Date.parse(g.expires_at)>Date.now())).map(g=>String(g.action))])];}
  if(!allowed.includes(action))fail('42501','Access denied');
  return {company:company!,actions:allowed,owner:owner?.role==='owner',member};
 }

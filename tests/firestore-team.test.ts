@@ -24,7 +24,7 @@ describe('native Firestore team and delegation contracts',()=>{
   });
  });
  it('dispatches the six handlers and returns only tenant roster fields to managers',async()=>{
-  const result=await call(owner,'company_roster');expect(result.error).toBeNull();expect(result.data).toHaveLength(2);expect(result.data[0]).toEqual({user_id:admin,role:'admin',display_name:'Pessoa'});
+  const result=await call(owner,'company_roster');expect(result.error).toBeNull();expect(result.data).toHaveLength(2);expect(result.data).toEqual(expect.arrayContaining([{user_id:admin,role:'admin',display_name:'Pessoa'},{user_id:member,role:'marketing',display_name:'Pessoa'}]));
   expect((await call(admin,'company_roster')).error).toBeNull();expect((await call(member,'company_roster')).error?.code).toBe('42501');expect((await call(owner,'company_roster',{p_company_id:other})).error?.code).toBe('42501');
  });
  it('creates hashed seven-day invitations, supersedes pending tokens, and isolates other tenants',async()=>{

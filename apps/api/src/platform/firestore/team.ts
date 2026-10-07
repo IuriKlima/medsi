@@ -1,6 +1,6 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {type FirestoreActor,audit,fail,manager,text,user,uuid,workspaceOwner} from './access';
-import type {DocumentTransaction,Row} from './store';
+import {scopedRows,type DocumentTransaction,type Row} from './store';
 
 const roles=['admin','marketing','approver','attendant','reader','support'];
 const delegable=['crm.read','crm.write','content.approve','strategy.approve','site.approve','ads.approve'];
@@ -16,7 +16,7 @@ function lockCompany(tx:DocumentTransaction,company:Row){tx.put('companies',comp
 
 async function roster(tx:DocumentTransaction,actor:FirestoreActor,args:Row){
  const {company}=await manager(tx,actor,uuid(args.p_company_id));
- const members=await tx.list('company_members',[{field:'company_id',value:company.id}]);
+ const members=await scopedRows(tx,'company_members',[{field:'company_id',value:company.id}]);
  const result:Row[]=[];
  for(const member of members){const profile=await tx.get('profiles',member.user_id);if(profile)result.push({user_id:member.user_id,role:member.role,display_name:profile.display_name??''});}
  return result;
@@ -26,7 +26,7 @@ async function invite(tx:DocumentTransaction,actor:FirestoreActor,args:Row){
  const email=text(args.p_email,3,254).toLowerCase();if(email.indexOf('@')<1)fail('22023','Invalid invitation');
  lockCompany(tx,company);
  const created=now();
- for(const invitation of await tx.list('company_invitations',[{field:'company_id',value:company.id},{field:'email',value:email}])){
+ for(const invitation of await scopedRows(tx,'company_invitations',[{field:'company_id',value:company.id},{field:'email',value:email}])){
   if(!invitation.accepted_at&&!invitation.revoked_at)tx.put('company_invitations',invitation.id,{...invitation,revoked_at:created});
  }
  const id=randomUUID(),token=randomBytes(32).toString('hex'),expires_at=new Date(Date.parse(created)+7*86400000).toISOString();
@@ -38,11 +38,11 @@ async function accept(tx:DocumentTransaction,actor:FirestoreActor,args:Row){
  const actorId=user(actor),token=text(args.p_token,64,64);if(!/^[a-f0-9]{64}$/.test(token))fail('22023','Invalid invitation token');
  // Only the server identity bridge writes these records, after Firebase verifies
  // the session and the current user's email. Never trust a caller-supplied email.
- const identities=await tx.list('firebase_identities',[{field:'user_id',value:actorId}]);
+ const identities=await tx.list('firebase_identities',[{field:'user_id',value:actorId}],{limit:2});
  const identity=identities.length===1?identities[0]:null;
  const email=typeof identity?.email==='string'?identity.email.toLowerCase():null;
  if(!email||!await tx.get('profiles',actorId))fail('42501','Verified email required');
- const invitations=await tx.list('company_invitations',[{field:'token_hash',value:tokenHash(token)}]);
+ const invitations=await tx.list('company_invitations',[{field:'token_hash',value:tokenHash(token)}],{limit:2});
  const invitation=invitations.length===1?invitations[0]:null;
  if(!invitation||invitation.email!==email||invitation.revoked_at||invitation.accepted_at||!Number.isFinite(Date.parse(invitation.expires_at))||Date.parse(invitation.expires_at)<=Date.now())fail('42501','Invitation unavailable');
  const company=await tx.get('companies',invitation!.company_id);
@@ -66,13 +66,13 @@ async function revoke(tx:DocumentTransaction,actor:FirestoreActor,args:Row){
 async function changeMember(tx:DocumentTransaction,actor:FirestoreActor,args:Row){
  const {company}=await manager(tx,actor,uuid(args.p_company_id)),actorId=uuid(args.p_user_id),nextRole=args.p_role===null?null:role(args.p_role),key=memberKey(company.id,actorId),member=await tx.get('company_members',key);
  if(!member)fail('22023','Member unavailable');
- if(member!.role==='admin'&&nextRole!=='admin'&&(await tx.list('company_members',[{field:'company_id',value:company.id},{field:'role',value:'admin'}])).length<=1)fail('22023','Keep at least one administrator');
+ if(member!.role==='admin'&&nextRole!=='admin'&&(await tx.list('company_members',[{field:'company_id',value:company.id},{field:'role',value:'admin'}],{limit:2})).length<=1)fail('22023','Keep at least one administrator');
  lockCompany(tx,company);
  if(nextRole===null){
   tx.remove('company_members',key);
   // SQL's FK ON DELETE CASCADE prevents a later rejoin reviving old grants.
-  for(const grant of await tx.list('company_permission_grants',[{field:'company_id',value:company.id},{field:'user_id',value:actorId}]))tx.remove('company_permission_grants',grantKey(company.id,actorId,grant.action));
-  const revoked=now();for(const invitation of await tx.list('company_invitations',[{field:'company_id',value:company.id},{field:'invited_by',value:actorId}]))if(!invitation.accepted_at&&!invitation.revoked_at)tx.put('company_invitations',invitation.id,{...invitation,revoked_at:revoked});
+  for(const grant of await scopedRows(tx,'company_permission_grants',[{field:'company_id',value:company.id},{field:'user_id',value:actorId}]))tx.remove('company_permission_grants',grantKey(company.id,actorId,grant.action));
+  const revoked=now();for(const invitation of await scopedRows(tx,'company_invitations',[{field:'company_id',value:company.id},{field:'invited_by',value:actorId}]))if(!invitation.accepted_at&&!invitation.revoked_at)tx.put('company_invitations',invitation.id,{...invitation,revoked_at:revoked});
  }else tx.put('company_members',key,{...member,role:nextRole});
  audit(tx,actor,company,nextRole===null?'member.removed':'member.role_changed',{userId:actorId,previousRole:member!.role,role:nextRole});return null;
 }

@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {fail,text,user,uuid,type FirestoreActor} from './access';
-import type {DocumentTransaction,Row} from './store';
+import {scopedRows,type DocumentTransaction,type Row} from './store';
 
 export const internalOperations=['company_assignment_roster','set_company_assignment','internal_portfolio','start_internal_access','end_internal_access','internal_company_context','internal_onboarding_context','record_followup_meeting'];
 type StaffRole='platform_admin'|'support';
@@ -10,7 +10,7 @@ async function staffRole(tx:DocumentTransaction,actor:FirestoreActor):Promise<St
  return staff.role as StaffRole;
 }
 async function assigned(tx:DocumentTransaction,actor:FirestoreActor,companyId:string,role:StaffRole){
- return role==='platform_admin'||(await tx.list('company_assignments',[{field:'company_id',value:companyId},{field:'staff_id',value:actor.id}])).length>0;
+ return role==='platform_admin'||(await tx.list('company_assignments',[{field:'company_id',value:companyId},{field:'staff_id',value:actor.id}],{limit:1})).length>0;
 }
 function platformAudit(tx:DocumentTransaction,actor:FirestoreActor,companyId:string,action:string,sessionId:string|null=null,details:Row={}){
  const id=randomUUID();tx.put('platform_audit',id,{id,actor_id:actor.id,company_id:companyId,session_id:sessionId,action,details,created_at:new Date().toISOString()});
@@ -26,7 +26,7 @@ export async function requireInternalSession(tx:DocumentTransaction,actor:Firest
 const newest=(a:Row,b:Row)=>String(b.created_at??'').localeCompare(String(a.created_at??''));
 async function companyContext(tx:DocumentTransaction,actor:FirestoreActor,sessionId:string){
  const {session,company,role}=await requireInternalSession(tx,actor,sessionId);
- const [subscription,members,history]=await Promise.all([tx.get('company_subscriptions',company.id),tx.list('company_members',[{field:'company_id',value:company.id}]),tx.list('audit_logs',[{field:'company_id',value:company.id}],{orderBy:'created_at',descending:true,limit:30})]);
+ const [subscription,members,history]=await Promise.all([tx.get('company_subscriptions',company.id),scopedRows(tx,'company_members',[{field:'company_id',value:company.id}]),tx.list('audit_logs',[{field:'company_id',value:company.id}],{orderBy:'created_at',descending:true,limit:30})]);
  const team:Row[]=[];
  for(const member of members){const profile=await tx.get('profiles',member.user_id);if(profile)team.push({display_name:profile.display_name??null,role:member.role});}
  team.sort((a,b)=>String(a.display_name).localeCompare(String(b.display_name)));
@@ -34,7 +34,7 @@ async function companyContext(tx:DocumentTransaction,actor:FirestoreActor,sessio
 }
 async function onboardingContext(tx:DocumentTransaction,actor:FirestoreActor,sessionId:string){
  const {company}=await requireInternalSession(tx,actor,sessionId);if(company.archived_at)fail('42501','Archived company');
- const [profile,versions,meetings]=await Promise.all([tx.get('company_onboarding',company.id),tx.list('company_profile_versions',[{field:'company_id',value:company.id}]),tx.list('company_followup_meetings',[{field:'company_id',value:company.id}])]);
+ const [profile,versions,meetings]=await Promise.all([tx.get('company_onboarding',company.id),tx.list('company_profile_versions',[{field:'company_id',value:company.id}],{limit:1,orderBy:'version',descending:true}),scopedRows(tx,'company_followup_meetings',[{field:'company_id',value:company.id}])]);
  return {companyId:company.id,profile,confirmedProfile:versions.sort((a,b)=>Number(b.version)-Number(a.version))[0]??null,meetings:meetings.sort(newest)};
 }
 function meetingDate(value:unknown){
@@ -63,7 +63,7 @@ export async function internalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
   if(!Number.isInteger(offset)||offset<0||offset>100000)fail('22023','Invalid pagination');
   const matches=(company:Row)=>String(company.name).toLocaleLowerCase().includes(search.toLocaleLowerCase()),companies:Row[]=[];
   if(role==='support'){
-   const assignments=await tx.list('company_assignments',[{field:'staff_id',value:actorId}]);
+   const assignments=await scopedRows(tx,'company_assignments',[{field:'staff_id',value:actorId}]);
    for(const companyId of new Set(assignments.map(a=>a.company_id))){const company=await tx.get('companies',companyId);if(company&&matches(company))companies.push(company);}
   }else{
    // Exact legacy totals and name search require scanning companies; each query is bounded.
@@ -78,7 +78,7 @@ export async function internalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
  const companyId=uuid(args.p_company_id);
  if(name==='company_assignment_roster'){
   if(role!=='platform_admin')fail('42501','Platform admin required');
-  const [staff,assignments]=await Promise.all([tx.list('platform_staff',[{field:'active',value:true},{field:'role',value:'support'}]),tx.list('company_assignments',[{field:'company_id',value:companyId}])]);
+  const [staff,assignments]=await Promise.all([scopedRows(tx,'platform_staff',[{field:'active',value:true},{field:'role',value:'support'}]),scopedRows(tx,'company_assignments',[{field:'company_id',value:companyId}])]);
   const rows:Row[]=[];for(const s of staff){const profile=await tx.get('profiles',s.user_id);if(profile)rows.push({user_id:s.user_id,display_name:profile.display_name??null,assigned:assignments.some(a=>a.staff_id===s.user_id)});}
   return rows.sort((a,b)=>String(a.display_name).localeCompare(String(b.display_name)));
  }
@@ -88,7 +88,7 @@ export async function internalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
   if(!company)fail('22023','Company unavailable');if(staff?.active!==true||staff.role!=='support')fail('22023','Support member unavailable');if(typeof args.p_assigned!=='boolean')fail('22023','Invalid assignment');
   const key=companyId+'_'+staffId,existing=await tx.get('company_assignments',key);
   if(args.p_assigned){if(!existing)tx.put('company_assignments',key,{company_id:companyId,staff_id:staffId,assigned_by:actorId,created_at:new Date().toISOString()});}
-  else {tx.remove('company_assignments',key);for(const session of await tx.list('internal_access_sessions',[{field:'company_id',value:companyId},{field:'operator_id',value:staffId}]))if(!session.ended_at)tx.put('internal_access_sessions',session.id,{...session,ended_at:new Date().toISOString()});}
+  else {tx.remove('company_assignments',key);for(const session of await scopedRows(tx,'internal_access_sessions',[{field:'company_id',value:companyId},{field:'operator_id',value:staffId}]))if(!session.ended_at)tx.put('internal_access_sessions',session.id,{...session,ended_at:new Date().toISOString()});}
   platformAudit(tx,actor,companyId,'assignment.changed',null,{staffId,assigned:args.p_assigned});return null;
  }
  if(name==='start_internal_access'){

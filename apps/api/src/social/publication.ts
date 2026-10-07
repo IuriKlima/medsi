@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {BadRequestException,Body,Controller,Get,Injectable,Param,Post,Req,ServiceUnavailableException,UseGuards,type OnModuleDestroy,type OnModuleInit,Res} from '@nestjs/common';
 import {z} from 'zod';
 import {prepareSocialPublicationMedia} from './media';
@@ -56,9 +57,9 @@ export async function runSocialPublication(job:Row,dependencies?:PublicationDepe
 @Injectable()
 export class SocialPublicationWorker implements OnModuleInit,OnModuleDestroy {
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(socialPublicationConfigured())this.timer=setTimeout(()=>void this.tick(),15000);}
+ onModuleInit(){if(socialPublicationConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),15000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
- private async tick(){try{const job=result<Row|null>(await serviceDatabase().rpc('claim_social_publication_server'));if(job&&!this.stopped)await runSocialPublication(job);}catch{/* Durable leases recover on restart; provider responses and secrets are not logged. */}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),15000);}}
+ private async tick(){try{const job=result<Row|null>(await serviceDatabase().rpc('claim_social_publication_server'));if(job&&!this.stopped)await runSocialPublication(job);}catch{/* Durable leases recover on restart; provider responses and secrets are not logged. */}finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),15000);}}
 }
 @Controller('onboarding/companies/:id/social-publications')
 @UseGuards(AuthGuard)

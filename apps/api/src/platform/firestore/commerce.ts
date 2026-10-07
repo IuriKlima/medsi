@@ -2,7 +2,7 @@ import {subscriptionEntitlement} from './billing';
 import {context,stages} from './journey-state';
 import {commercePlans,type PurchaseState} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
-import {type FirestoreActor,user,server,uuid,companyAccess,audit,fail} from './access';
+import {type FirestoreActor,user,server,uuid,companyAccess,audit,fail,scopedRows} from './access';
 
 export const commerceOperations=['begin_test_checkout','complete_test_checkout_server'];
 const confirmed=(state:Row|null)=>Boolean(state&&state.profile_version>0&&state.confirmed_revision===state.revision);
@@ -25,7 +25,7 @@ export async function purchaseState(tx:DocumentTransaction,actor:FirestoreActor,
   const cursor=await tx.get('company_checkout_state',id);
   if(cursor?.company_id===id&&cursor.latest_checkout_id)latest=await tx.get('company_test_checkouts',cursor.latest_checkout_id);
   if(latest?.company_id!==id)latest=null;
-  if(!latest){const history=await tx.list('company_test_checkouts',[{field:'company_id',value:id}]);latest=history.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)))[0]??null;}
+  if(!latest){latest=(await tx.list('company_test_checkouts',[{field:'company_id',value:id}],{limit:1,orderBy:'created_at',descending:true}))[0]??null;}
  }
  const setupValid=Boolean(setup&&!setup.invalidated_at&&setup.profile_version===onboarding?.profile_version&&confirmed(onboarding)&&stages(await context(tx,id)).every((s,i)=>s.approved&&s.basis===setup.bases?.[i]));
  return {companyId:id,aiAllowed:live||test||sandbox,accessMode:live?'live':test||sandbox?'test':'none',testUntil:sandbox?subscription!.current_period_end:linked?grant!.valid_until:null,planId:live||sandbox?subscription!.plan_id:linked?approved!.plan_id:null,onboardingComplete:confirmed(onboarding),setupComplete:setupValid,canPurchase,canWrite:access.actions.includes('marketing.write'),latestCheckout:latest as PurchaseState['latestCheckout']};
@@ -48,7 +48,7 @@ export async function commerceRpc(tx:DocumentTransaction,actor:FirestoreActor,na
   // Shared per-clinic cursor serializes concurrent new checkouts, including two
   // requests with different IDs. Dates alone do not disambiguate equal timestamps.
   await tx.get('company_checkout_state',companyId);
-  const pending=await tx.list('company_test_checkouts',[{field:'company_id',value:companyId}]);
+  const pending=await scopedRows(tx,'company_test_checkouts',[{field:'company_id',value:companyId},{field:'status',value:'pending'}]);
   const now=new Date(),created=now.toISOString();
   for(const checkout of pending)if(checkout.status==='pending')tx.put('company_test_checkouts',checkout.id,{...checkout,status:'cancelled',resolved_at:created});
   const checkout={id,company_id:companyId,actor_id:actorId,plan_id:plan!.id,mode:'test',status:'pending',installment_cents:Math.floor(plan!.totalCents/installments),installments,total_cents:plan!.totalCents,created_at:created,expires_at:new Date(now.getTime()+30*60*1000).toISOString(),resolved_at:null};

@@ -1,3 +1,4 @@
+import {queueStates,queueClaimed,queueClaimOrder} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import type {DocumentTransaction,Row} from './store';
 export async function scheduleBillingReconciliation(tx:DocumentTransaction,subscriptionId:string,companyId:string,environment:string){
@@ -5,11 +6,11 @@ export async function scheduleBillingReconciliation(tx:DocumentTransaction,subsc
  tx.put('billing_reconciliation_jobs',subscriptionId,{subscription_id:subscriptionId,company_id:companyId,environment,status:'pending',attempts:0,next_attempt_at:new Date().toISOString(),lease_token:null,lease_until:null,error_code:null});
 }
 export async function claimBillingReconciliation(tx:DocumentTransaction):Promise<Row|null>{
- const rows=await tx.list('billing_reconciliation_jobs',[{field:'environment',value:'sandbox'}]);
- for(const row of rows.sort((a,b)=>String(a.next_attempt_at).localeCompare(String(b.next_attempt_at)))){
+ const rows=await queueStates(tx,'billing_reconciliation_jobs',['pending','running'],'status',[{field:'environment',value:'sandbox'}]);
+ for(const row of rows.sort((a,b)=>queueClaimOrder(a,b)||String(a.next_attempt_at).localeCompare(String(b.next_attempt_at)))){
   if(['pending','running'].includes(row.status)&&row.attempts>=8&&!(Date.parse(row.lease_until??'')>Date.now())){tx.put('billing_reconciliation_jobs',row.subscription_id,{...row,status:'blocked',lease_token:null,lease_until:null,error_code:'BILLING_ATTEMPT_LIMIT'});continue;}
   if(!['pending','running'].includes(row.status)||row.attempts>=8||Date.parse(row.next_attempt_at)>Date.now()||Date.parse(row.lease_until??'')>Date.now())continue;
-  const job={...row,status:'running',attempts:Number(row.attempts)+1,lease_token:randomUUID(),lease_until:new Date(Date.now()+180000).toISOString()};tx.put('billing_reconciliation_jobs',row.subscription_id,job);return job;
+  queueClaimed(tx,row);const job={...row,queue_claimed_at:new Date().toISOString(),status:'running',attempts:Number(row.attempts)+1,lease_token:randomUUID(),lease_until:new Date(Date.now()+180000).toISOString()};tx.put('billing_reconciliation_jobs',row.subscription_id,job);return job;
  }
  return null;
 }

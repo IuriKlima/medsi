@@ -1,3 +1,5 @@
+import {scopedRows} from './store';
+import {queueScan,queueStates} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import {visualJobRequest} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
@@ -19,29 +21,28 @@ export async function visualRpc(tx:DocumentTransaction,actor:FirestoreActor,name
   if(logo){request={id:uuid(args.p_id??args.p_request_id),kind:'brand_logo',instructions:text(args.p_instructions??'',0,2000),ratio:'1:1',references:[],sourceId:null,planId:null,campaignIndex:null};if(ctx.facts.name?.status!=='provided'||ctx.facts.logoPreference?.status!=='provided'||ctx.facts.logoPreference?.value!=='create')fail('22023','Logo generation must be requested in the confirmed profile');}
   else {const parsed=visualJobRequest.safeParse(args.p_data);if(!parsed.success)fail('22023','Invalid visual request');request=parsed.data!;}
   const prior=await tx.get('company_visual_jobs',request.id);if(prior){if(prior.company_id!==company||prior.actor_id!==actor.id||hash(prior.request)!==hash(request))fail('40001','Request changed');return prior.id;}
-  const jobs=await tx.list('company_visual_jobs',[{field:'company_id',value:company}]);if(jobs.filter(j=>Date.parse(j.created_at)>Date.now()-86400000).length>=30)fail('22023','Daily allowance exhausted');
+  const jobs=await tx.list('company_visual_jobs',[{field:'company_id',value:company}],{limit:30,orderBy:'created_at',descending:true});if(jobs.filter(j=>Date.parse(j.created_at)>Date.now()-86400000).length>=30)fail('22023','Daily allowance exhausted');
   const ids=[...new Set([...(request.sourceId?[request.sourceId]:[]),...request.references])];await references(tx,company,ids);
   let plan:Row|null=null,token:string|null=null;if(request.kind==='campaign_creative'){if(ctx.traffic?.mode==='skipped')fail('40001','Traffic was skipped');token=approvalThrough(ctx,5).token;plan=await tx.get('company_paid_plans',request.planId);if(!plan||plan.company_id!==company||plan.profile_version!==ctx.version||plan.status!=='ready'||!plan.output?.campaigns?.[request.campaignIndex])fail('22023','Current campaign required');}
   tx.put('company_visual_jobs',request.id,{id:request.id,company_id:company,actor_id:actor.id,profile_version:ctx.version,kind:request.kind,source_attachment_id:request.sourceId,plan_id:request.planId,campaign_index:request.campaignIndex,instructions:request.instructions,ratio:request.ratio,reference_ids:ids,request,plan_hash:plan?hash(plan.output):null,approval_token:token,status:'pending',attempts:0,token:null,lease_until:null,next_attempt_at:now(),result_attachment_id:null,error:null,created_at:now(),updated_at:now()});return request.id;
  }
  server(actor);
  if(name==='claim_visual_job_server'){
-  for(const setup of await tx.list('company_setup')){
+  for(const setup of await queueScan(tx,'company_setup',[],'visual-logo-seed',1)){
    if(setup.invalidated_at)continue;const ctx=await context(tx,setup.company_id);if(!ctx.confirmed||ctx.version!==setup.profile_version||ctx.facts.logoPreference?.status!=='provided'||ctx.facts.logoPreference?.value!=='create')continue;
-   let approval;try{approval=approvalThrough(ctx,5);}catch{continue;}const prior=await tx.list('company_visual_jobs',[{field:'company_id',value:setup.company_id}]);if(prior.some(job=>job.kind==='brand_logo'&&job.profile_version===ctx.version))continue;
+   let approval;try{approval=approvalThrough(ctx,5);}catch{continue;}const prior=await tx.list('company_visual_jobs',[{field:'company_id',value:setup.company_id},{field:'kind',value:'brand_logo'},{field:'profile_version',value:ctx.version}],{limit:1});if(prior.length)continue;
    const id=randomUUID();try{await visualRpc(tx,{role:'authenticated',id:setup.approved_by},'enqueue_brand_logo',{p_company_id:setup.company_id,p_id:id,p_instructions:ctx.facts.brand?.status==='provided'?ctx.facts.brand.value.slice(0,2000):''});const job=await tx.get('company_visual_jobs',id);tx.put('company_visual_jobs',id,{...job,auto_setup_token:approval.token});}catch(e){if(!['42501','22023','40001','P0402'].includes(String((e as {code?:string}).code)))throw e;}
   }
-  for(const plan of await tx.list('company_paid_plans',[{field:'status',value:'ready'}])){
+  for(const plan of await queueScan(tx,'company_paid_plans',[{field:'status',value:'ready'}],'visual-campaign-seed',1)){
    const ctx=await context(tx,plan.company_id);if(ctx.version!==plan.profile_version||ctx.traffic?.mode==='skipped')continue;try{approvalThrough(ctx,5);}catch{continue;}
-   const existing=await tx.list('company_visual_jobs',[{field:'company_id',value:plan.company_id}]);
-   for(const [index,campaign] of (plan.output?.campaigns??[]).entries())if(!existing.some(j=>j.plan_id===plan.id&&j.campaign_index===index)){
-    const refs=(await tx.list('onboarding_attachments',[{field:'company_id',value:plan.company_id}])).filter(a=>extensions[a.mime]&&!existing.some(j=>j.result_attachment_id===a.id)).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))).slice(0,5).map(a=>a.id);
+   for(const [index,campaign] of (plan.output?.campaigns??[]).entries())if(!(await tx.list('company_visual_jobs',[{field:'company_id',value:plan.company_id},{field:'plan_id',value:plan.id},{field:'campaign_index',value:index}],{limit:1})).length){
+    const available=(await scopedRows(tx,'onboarding_attachments',[{field:'company_id',value:plan.company_id}])).filter(a=>extensions[a.mime]),refs=[];for(const a of available.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))){if(refs.length===5)break;if(!(await tx.list('company_visual_jobs',[{field:'company_id',value:plan.company_id},{field:'result_attachment_id',value:a.id}],{limit:1})).length)refs.push(a.id);}
     try{await visualRpc(tx,{role:'authenticated',id:plan.actor_id},'enqueue_visual_job',{p_company_id:plan.company_id,p_data:{id:randomUUID(),kind:'campaign_creative',sourceId:null,planId:plan.id,campaignIndex:index,instructions:'',ratio:campaign.provider==='meta'?'4:5':'16:9',references:refs}});}catch(e){if(!['42501','22023','40001','P0402'].includes(String((e as {code?:string}).code)))throw e;}
    }
   }
-  const jobs=[...await tx.list('company_visual_jobs',[{field:'status',value:'pending'}]),...await tx.list('company_visual_jobs',[{field:'status',value:'running'}])];
+  const jobs=await queueStates(tx,'company_visual_jobs',['pending','running']);
   for(const job of jobs.filter(due).sort((a,b)=>a.created_at.localeCompare(b.created_at))){const access=await matching(tx,job);if(!access){tx.put('company_visual_jobs',job.id,stale(job));continue;}if(job.attempts>=3){tx.put('company_visual_jobs',job.id,{...retry(job,'Limite de tentativas atingido.'),status:'failed'});continue;}
-   const attempts=await tx.list('company_visual_attempts',[{field:'company_id',value:job.company_id}]);if(attempts.filter(a=>Date.parse(a.created_at)>Date.now()-86400000).length>=36){tx.put('company_visual_jobs',job.id,{...retry(job,'Limite diário de geração atingido.'),status:'failed'});continue;}
+   const attempts=await tx.list('company_visual_attempts',[{field:'company_id',value:job.company_id}],{limit:36,orderBy:'created_at',descending:true});if(attempts.filter(a=>Date.parse(a.created_at)>Date.now()-86400000).length>=36){tx.put('company_visual_jobs',job.id,{...retry(job,'Limite diário de geração atingido.'),status:'failed'});continue;}
    let refs;try{refs=await references(tx,job.company_id,job.reference_ids);}catch{tx.put('company_visual_jobs',job.id,{...job,status:'failed',error:'Material indisponível.',updated_at:now()});continue;}
    const token=randomUUID(),attempt=randomUUID();tx.put('company_visual_attempts',attempt,{id:attempt,company_id:job.company_id,actor_id:job.actor_id,created_at:now()});tx.put('company_visual_jobs',job.id,{...job,status:'running',token,attempts:job.attempts+1,lease_until:new Date(Date.now()+300000).toISOString(),error:null,updated_at:now()});return {id:job.id,companyId:job.company_id,token,request:{kind:job.kind,ratio:job.ratio,instructions:job.instructions,facts:access.ctx.facts,campaign:access.campaign},references:refs};
   }return null;

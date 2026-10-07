@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {agentModelsConfigured} from '../ai/models';
 import {queuePollDelay} from '../platform/queue-polling';
 import {databaseConfigured,firestoreBackend} from '../platform/config';
@@ -13,7 +14,7 @@ type Job={id:string;companyId:string;token:string;runId:string;kind:'strategy'|'
 @Injectable()
 export class ContentPreparation implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(contentPreparationConfigured())this.timer=setTimeout(()=>void this.tick(),7000);}
+ onModuleInit(){if(contentPreparationConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),7000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){const db=serviceDb();let job:Job|null=null;let failed=false;let production=false;
  try{
@@ -30,6 +31,6 @@ export class ContentPreparation implements OnModuleInit,OnModuleDestroy{
    const saved=await db.rpc(production?'finish_content_production_server':'finish_content_preparation_server',{p_id:job.id,p_token:job.token,p_result:output});if(saved.error)throw new Error('Preparation persistence failed');
   }
  }catch{failed=true;if(job)await Promise.resolve(db.rpc(production?'finish_content_production_server':'finish_content_preparation_server',{p_id:job.id,p_token:job.token,p_result:null})).catch(()=>{});}
- finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),queuePollDelay(Boolean(job),failed,5000));}
+ finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),queuePollDelay(Boolean(job),failed,5000));}
  }
 }

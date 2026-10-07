@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {agentModelsConfigured} from './models';
 import {databaseConfigured} from '../platform/config';
 import {randomUUID} from 'node:crypto';
@@ -19,7 +20,7 @@ type Job={id:string;companyId:string;token:string;request:VisualRequest;referenc
 @Injectable()
 export class VisualJobs implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(visualJobsConfigured())this.timer=setTimeout(()=>void this.tick(),8000);}
+ onModuleInit(){if(visualJobsConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),8000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:Job|null=null;try{
   const db=serviceDb();job=result<Job|null>(await db.rpc('claim_visual_job_server'));if(!job||this.stopped)return;
@@ -29,5 +30,5 @@ export class VisualJobs implements OnModuleInit,OnModuleDestroy{
   const accepted=result<boolean>(await db.rpc('finish_visual_job_server',{p_id:job.id,p_token:job.token,p_result:{attachmentId,mime:image.mime,size:image.bytes.length,model:image.model,quality:image.quality,dimensions:image.size,usage:image.usage}}));
   if(!accepted)await db.storage.from('company-assets').remove([path]);
  }catch{if(job)await Promise.resolve(serviceDb().rpc('finish_visual_job_server',{p_id:job.id,p_token:job.token,p_result:null})).catch(()=>{});}
- finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),7000);}}
+ finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),7000);}}
 }

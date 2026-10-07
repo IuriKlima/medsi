@@ -4,7 +4,7 @@ export {purchaseState} from './commerce';
 import {randomUUID} from 'node:crypto';
 import {medicalIntakeAnswersWithBusinessType,medicalAnswerSchemas,medicalIntakeSteps,medicalIntakeRequestSchema,type MedicalIntakeAnswers,type MedicalIntakeStep} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
-import {type FirestoreActor,user,uuid,hash,companyAccess,capabilities,audit,fail} from './access';
+import {type FirestoreActor,user,uuid,hash,companyAccess,capabilities,audit,fail,scopedRows} from './access';
 const now=()=>new Date().toISOString();
 async function validAnswer(tx:DocumentTransaction,company:string,step:MedicalIntakeStep,value:unknown){
  const parsed=medicalAnswerSchemas[step].safeParse(value);if(!parsed.success)fail('22023','Invalid medical answer');
@@ -15,7 +15,7 @@ async function validAnswer(tx:DocumentTransaction,company:string,step:MedicalInt
 }
 export async function onboardingSnapshot(tx:DocumentTransaction,actor:FirestoreActor,id:string){
  await companyAccess(tx,actor,id,'marketing.read');const state=await tx.get('company_onboarding',id);if(!state)fail('22023','Onboarding unavailable');
- const [messages,attachments,versions,cap]=await Promise.all([tx.list('onboarding_messages',[{field:'company_id',value:id}]),tx.list('onboarding_attachments',[{field:'company_id',value:id}]),tx.list('company_profile_versions',[{field:'company_id',value:id}]),capabilities(tx,actor,id)]);
+ const [messages,attachments,versions,cap]=await Promise.all([scopedRows(tx,'onboarding_messages',[{field:'company_id',value:id}]),scopedRows(tx,'onboarding_attachments',[{field:'company_id',value:id}]),tx.list('company_profile_versions',[{field:'company_id',value:id}],{limit:1,orderBy:'version',descending:true}),capabilities(tx,actor,id)]);
  const confirmed=state!.profile_version>0&&state!.confirmed_revision===state!.revision;
  return {state,step:confirmed?'confirmed':'review',question:confirmed?'Cadastro confirmado.':'Complete o cadastro médico.',messages:messages.sort((a,b)=>a.created_at.localeCompare(b.created_at)),attachments:attachments.sort((a,b)=>a.created_at.localeCompare(b.created_at)),confirmedProfile:versions.sort((a,b)=>b.version-a.version)[0]??null,capabilities:cap};
 }
@@ -47,8 +47,9 @@ export async function saveMedicalIntake(tx:DocumentTransaction,actor:FirestoreAc
   if(state!.profile_version>0&&['businessType','cnpj','address','specialty'].includes(input.step)&&hash(answers[input.step]??null)!==hash(input.answer))await invalidateCompetitorSelection(tx,id,next);
   Object.assign(answers,{[input.step]:input.answer});
  }
- // Every profile edit invalidates downstream approvals without deleting evidence.
- const approvals=await tx.list('company_marketing_approvals',[{field:'company_id',value:id}]);for(const approval of approvals)tx.put('company_marketing_approvals',approval.id,{...approval,invalidated_at:now()});
+ // Every profile edit invalidates downstream approvals, including legacy rows
+ // without a profile version, while preserving the approval evidence.
+ const approvals=await scopedRows(tx,'company_marketing_approvals',[{field:'company_id',value:id}]);for(const approval of approvals)tx.put('company_marketing_approvals',approval.id,{...approval,invalidated_at:now()});
  next.medical_intake={version:1,answers};tx.put('company_onboarding',id,next);
  tx.put('medical_intake_requests',key,{company_id:id,request_id:input.requestId,actor_id:actor.id,fingerprint:fp,created_at:now()});
  const messageId=randomUUID();tx.put('onboarding_messages',messageId,{id:messageId,company_id:id,role:'user',body:input.step==='confirm'?'Confirmei as informações do cadastro médico.':'Resposta salva no cadastro médico: '+input.step,actor_id:actor.id,request_id:input.requestId,created_at:now()});

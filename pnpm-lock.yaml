@@ -154,18 +154,12 @@ importers:
 
   apps/worker:
     dependencies:
-      '@askadia/contracts':
+      '@askadia/api':
         specifier: workspace:*
-        version: link:../../packages/contracts
-      bullmq:
-        specifier: ^5.60.0
-        version: 5.81.5
+        version: link:../api
       dotenv:
         specifier: ^17.2.0
         version: 17.4.2
-      ioredis:
-        specifier: ^5.8.0
-        version: 5.11.1
       zod:
         specifier: ^4.1.0
         version: 4.6.5

@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {CalendarController} from './calendar-controller';
 import {queuePollDelay} from '../platform/queue-polling';
 import {databaseConfigured,firestoreBackend} from '../platform/config';
@@ -25,7 +26,7 @@ type Job={id:string;token:string;companyId:string;kind:'site'|'recommendations';
 @Injectable()
 export class LaunchPreparation implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(launchConfigured()||sitePreparationConfigured())this.timer=setTimeout(()=>void this.tick(),8000);}
+ onModuleInit(){if(launchConfigured()||sitePreparationConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),8000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:Job|null=null;let failed=false;let nativeSite=false;
   try{const db=serviceDb();if(launchConfigured())job=result<Job|null>(await db.rpc('claim_company_launch_server'));if(!job&&firestoreBackend()&&sitePreparationConfigured()){job=result<Job|null>(await db.rpc('claim_company_site_server'));nativeSite=Boolean(job);}if(job){let output:unknown;
@@ -33,7 +34,7 @@ export class LaunchPreparation implements OnModuleInit,OnModuleDestroy{
    else output=await recommendations(job.facts,job.strategy);
    result(await db.rpc(nativeSite?'finish_company_site_server':'finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:output}));
   }}catch{failed=true;if(job)await Promise.resolve(serviceDb().rpc(nativeSite?'finish_company_site_server':'finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:null})).catch(()=>{});}
-  finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),queuePollDelay(Boolean(job),failed,7000));}
+  finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),queuePollDelay(Boolean(job),failed,7000));}
  }
 }
 @Controller('onboarding/companies/:id/launch')

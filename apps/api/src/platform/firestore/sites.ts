@@ -1,3 +1,4 @@
+import {queueScan,queueStates} from './queue-scan';
 import {randomUUID} from 'node:crypto';
 import {siteContentSchema,siteDomain} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
@@ -38,7 +39,7 @@ export async function siteRpc(tx:DocumentTransaction,actor:FirestoreActor,name:s
   const id=uuid(args.p_id),prior=await tx.get('company_site_jobs',id);if(prior){if(prior.company_id!==company||prior.actor_id!==actor.id)fail('42501','Access denied');return prior;}
   if(typeof args.p_feedback!=='string'||args.p_feedback.length>2000)fail('22023','Invalid feedback');
   await siteRpc(tx,actor,'reserve_site_generation',{p_company_id:company,p_id:id});
-  const pending=await tx.list('company_site_jobs',[{field:'company_id',value:company}]);if(pending.some(j=>['pending','running'].includes(j.status)&&j.profile_version===args.p_profile_version&&j.expected_revision===s.revision))fail('40001','Site generation already pending');
+  const pending=[];for(const status of ['pending','running'])pending.push(...await tx.list('company_site_jobs',[{field:'company_id',value:company},{field:'profile_version',value:args.p_profile_version},{field:'expected_revision',value:s.revision},{field:'status',value:status}],{limit:1}));if(pending.length)fail('40001','Site generation already pending');
   const row={id,company_id:company,actor_id:actor.id,profile_version:args.p_profile_version,expected_revision:s.revision,feedback:args.p_feedback,status:'pending',attempts:0,token:null,lease_until:null,next_attempt_at:now(),error:null,created_at:now(),updated_at:now()};tx.put('company_site_jobs',id,row);return row;
  }
  if(name==='reserve_site_generation'){
@@ -83,7 +84,7 @@ async function siteJobRpc(tx:DocumentTransaction,actor:FirestoreActor,name:strin
  }
  const finish=(job:Row,status:string,error:string|null)=>({...job,status,error,token:null,lease_until:null,updated_at:now()});
  if(name==='claim_company_site_server'){
-  for(const setup of await tx.list('company_setup')){
+  for(const setup of await queueScan(tx,'company_setup',[],'sites-seed',1)){
    if(setup.invalidated_at)continue;
    const company=setup.company_id,ctx=await context(tx,company),key=company+'_'+ctx.version;
    if(!ctx.confirmed||setup.profile_version!==ctx.version||ctx.facts.websitePreference?.status!=='provided'||ctx.facts.websitePreference?.value!=='create'||await tx.get('company_site_auto_seeds',key))continue;
@@ -91,13 +92,13 @@ async function siteJobRpc(tx:DocumentTransaction,actor:FirestoreActor,name:strin
    try{
     const purchase=await purchaseState(tx,delegated,company);if(!purchase.aiAllowed||!purchase.setupComplete)continue;const approved=approvalThrough(ctx,5),existing=await tx.get('company_sites',company);
     if(existing?.draft&&existing.profile_version===ctx.version)continue;
-    if((await tx.list('company_site_jobs',[{field:'company_id',value:company}])).some(j=>j.profile_version===ctx.version&&['pending','running','completed'].includes(j.status)))continue;
+    let existingJob=false;for(const status of ['pending','running','completed'])if((await tx.list('company_site_jobs',[{field:'company_id',value:company},{field:'profile_version',value:ctx.version},{field:'status',value:status}],{limit:1})).length)existingJob=true;if(existingJob)continue;
     const digest=hash({company,version:ctx.version,kind:'requested-site'}),id=digest.slice(0,8)+'-'+digest.slice(8,12)+'-4'+digest.slice(13,16)+'-8'+digest.slice(17,20)+'-'+digest.slice(20,32);
     const job=await siteRpc(tx,delegated,'enqueue_company_site',{p_company_id:company,p_id:id,p_revision:existing?.revision??0,p_profile_version:ctx.version,p_feedback:''});
     tx.put('company_site_jobs',id,{...(job as Row),auto_setup_token:approved.token});tx.put('company_site_auto_seeds',key,{company_id:company,profile_version:ctx.version,job_id:id,approval_token:approved.token,created_at:now()});
    }catch(e){if(!['42501','22023','40001','P0402'].includes(String((e as {code?:string}).code)))throw e;}
   }
-  const jobs=[...await tx.list('company_site_jobs',[{field:'status',value:'pending'}]),...await tx.list('company_site_jobs',[{field:'status',value:'running'}])];
+  const jobs=await queueStates(tx,'company_site_jobs',['pending','running']);
   for(const job of jobs.sort((a,b)=>a.created_at.localeCompare(b.created_at))){
    if(Date.parse(job.next_attempt_at)>Date.now()||job.status==='running'&&Date.parse(job.lease_until)>Date.now())continue;
    if(!await eligible(job)){tx.put('company_site_jobs',job.id,finish(job,'stale','Perfil, permissão ou acesso mudou. Solicite novamente.'));continue;}

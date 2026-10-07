@@ -1,3 +1,4 @@
+import {trackBackgroundTask} from '../background/tasks';
 import {databaseConfigured} from '../platform/config';
 import {prepareAutomaticPaidPlan} from './ad-plan-preparation';
 import {createHash} from 'node:crypto';
@@ -78,17 +79,17 @@ export async function runAdExecution(job:Job){
 @Injectable()
 export class AdExecutionWorker implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(adsExecutionConfigured())this.timer=setTimeout(()=>void this.tick(),10000);}
+ onModuleInit(){if(adsExecutionConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),10000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
- private async tick(){try{const job=result<Job|null>(await serviceDb().rpc('claim_ad_execution_server',{p_mode:'execute'}));if(job&&!this.stopped)await runAdExecution(job);}catch{/* No provider payloads or credentials in logs. The durable lease is recoverable. */}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),10000);}}
+ private async tick(){try{const job=result<Job|null>(await serviceDb().rpc('claim_ad_execution_server',{p_mode:'execute'}));if(job&&!this.stopped)await runAdExecution(job);}catch{/* No provider payloads or credentials in logs. The durable lease is recoverable. */}finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),10000);}}
 }
 
 @Injectable()
 export class AdPreparationWorker implements OnModuleInit,OnModuleDestroy{
  private timer:ReturnType<typeof setTimeout>|undefined;private stopped=false;
- onModuleInit(){if(adsExecutionConfigured())this.timer=setTimeout(()=>void this.tick(),12000);}
+ onModuleInit(){if(adsExecutionConfigured())this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),12000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
- private async tick(){try{const job=result<Job|null>(await serviceDb().rpc('claim_ad_execution_server',{p_mode:'prepare'}));if(job&&!this.stopped)await runAdExecution(job);else if(!this.stopped)await prepareAutomaticPaidPlan();}catch{/* Draft generation cannot delay the campaign scheduler. */}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),10000);}}
+ private async tick(){try{const job=result<Job|null>(await serviceDb().rpc('claim_ad_execution_server',{p_mode:'prepare'}));if(job&&!this.stopped)await runAdExecution(job);else if(!this.stopped)await prepareAutomaticPaidPlan();}catch{/* Draft generation cannot delay the campaign scheduler. */}finally{if(!this.stopped)this.timer=setTimeout(()=>trackBackgroundTask(this,()=>this.tick()),10000);}}
 }
 @Controller('onboarding/companies/:id/ads/executions')
 @UseGuards(AuthGuard)

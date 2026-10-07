@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {companyAccess,fail,hash,user,uuid,type FirestoreActor} from './access';
-import type {DocumentTransaction,Row} from './store';
+import {scopedRows,type DocumentTransaction,type Row,type Predicate} from './store';
 
 export const supportOperations=['create_support_ticket','reply_support_ticket','set_support_ticket_status','support_ticket_detail','support_ticket_list'];
 const statuses=['open','in_progress','waiting_customer','resolved'];
@@ -37,7 +37,7 @@ async function assigned(tx:DocumentTransaction,actor:FirestoreActor,companyId:st
  const role=await staffRole(tx,actor);
  if(role==='platform_admin')return true;
  if(role!=='support'||companyId===null)return false;
- return (await tx.list('company_assignments',[{field:'staff_id',value:actor.id},{field:'company_id',value:companyId}])).length>0;
+ return (await tx.list('company_assignments',[{field:'staff_id',value:actor.id},{field:'company_id',value:companyId}],{limit:1})).length>0;
 }
 async function visible(tx:DocumentTransaction,actor:FirestoreActor,ticket:Row){
  const actorId=user(actor);
@@ -58,7 +58,7 @@ async function ticketRow(tx:DocumentTransaction,ticket:Row){
 }
 async function detail(tx:DocumentTransaction,actor:FirestoreActor,id:string){
  const ticket=await ticketForActor(tx,actor,id);
- const messages=(await tx.list('support_messages',[{field:'ticket_id',value:id}])).sort(messageOrder).slice(-100).map(row=>project(row,messageFields));
+ const messages=(await tx.list('support_messages',[{field:'ticket_id',value:id}],{limit:100,orderBy:'created_at',descending:true})).sort(messageOrder).slice(-100).map(row=>project(row,messageFields));
  return {ticket:await ticketRow(tx,ticket),messages};
 }
 function audit(tx:DocumentTransaction,actor:FirestoreActor,companyId:string|null,action:string,details:Row,now:string){
@@ -67,7 +67,7 @@ function audit(tx:DocumentTransaction,actor:FirestoreActor,companyId:string|null
 async function nextNumber(tx:DocumentTransaction){
  const counter=await tx.get('support_counters','tickets');
  // A ported collection may already contain protocols before its first native write.
- const previous=counter?Number(counter.last_number):(await tx.list('support_tickets')).reduce((max,row)=>Math.max(max,Number(row.number)||0),0);
+ const previous=counter?Number(counter.last_number):Number((await tx.list('support_tickets',[],{limit:1,orderBy:'number',descending:true}))[0]?.number??0);
  if(!Number.isSafeInteger(previous)||previous<0||!Number.isSafeInteger(previous+1))fail('22023','Invalid support counter');
  tx.put('support_counters','tickets',{last_number:previous+1});return previous+1;
 }
@@ -77,19 +77,38 @@ export async function supportRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
  if(name==='support_ticket_list'){
   const team=args.p_team===undefined?false:args.p_team,offset=args.p_offset===undefined?0:args.p_offset;
   if(typeof team!=='boolean'||!Number.isInteger(offset)||offset<0||offset>10000)fail('22023','Invalid offset');
+  // The public offset counts authorized rows. Stop once that window is filled;
+  // never drain all platform tickets for a twenty-row administrator page.
+  const order={orderBy:'updated_at',descending:true,tieBreakerDescending:false};
+  let inspected=0;const visibility=new Map<string|null,boolean>();
+  const window=async(filters:Predicate[],checkVisibility:boolean)=>{
+   const found:Row[]=[];let readOffset=0;
+   while(found.length<offset+20){
+    // One sentinel distinguishes exactly 10000 exhausted rows from overflow.
+    // All assigned-company windows share this budget and run sequentially.
+    const limit=Math.min(500,checkVisibility&&readOffset>found.length?500:offset+20-found.length,10001-inspected);
+    const page=await tx.list('support_tickets',filters,{...order,limit,offset:readOffset});
+    inspected+=page.length;if(inspected>10000)fail('54000','Support ticket listing requires a narrower scope above 10000 inspected tickets');
+    for(const ticket of page){
+     if(!checkVisibility){found.push(ticket);continue;}
+     let permitted=visibility.get(ticket.company_id);
+     if(permitted===undefined){permitted=await visible(tx,actor,ticket);visibility.set(ticket.company_id,permitted);}
+     if(permitted)found.push(ticket);
+    }
+    if(page.length<limit)break;readOffset+=page.length;
+   }
+   return found;
+  };
   let tickets:Row[];
   if(team){
    const role=await staffRole(tx,actor);if(!role)fail('42501','Access denied');
-   if(role==='platform_admin')tickets=await tx.list('support_tickets');
-   else{
-    const assignments=await tx.list('company_assignments',[{field:'staff_id',value:actorId}]);
-    const groups=await Promise.all([...new Set(assignments.map(row=>row.company_id))].map(id=>tx.list('support_tickets',[{field:'company_id',value:id}])));
-    tickets=groups.flat();
-   }
-  }else tickets=await tx.list('support_tickets',[{field:'created_by',value:actorId}]);
-  const allowed:Row[]=[];for(const ticket of tickets)if(await visible(tx,actor,ticket))allowed.push(ticket);
-  allowed.sort((a,b)=>compare(b.updated_at,a.updated_at)||compare(a.id,b.id));
-  return Promise.all(allowed.slice(offset,offset+20).map(ticket=>ticketRow(tx,ticket)));
+   if(role==='platform_admin')return Promise.all((await tx.list('support_tickets',[],{...order,limit:20,offset})).map(ticket=>ticketRow(tx,ticket)));
+   const assignments=await scopedRows(tx,'company_assignments',[{field:'staff_id',value:actorId}]);
+   tickets=[];
+   for(const id of new Set(assignments.map(row=>row.company_id)))tickets.push(...await window([{field:'company_id',value:id}],false));
+  }else tickets=await window([{field:'created_by',value:actorId}],true);
+  tickets.sort((a,b)=>compare(b.updated_at,a.updated_at)||compare(a.id,b.id));
+  return Promise.all(tickets.slice(offset,offset+20).map(ticket=>ticketRow(tx,ticket)));
  }
  if(name==='create_support_ticket'){
   if(!await tx.get('profiles',actorId))fail('42501','Access denied');
@@ -105,7 +124,7 @@ export async function supportRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
    if(existing.created_by!==actorId||existing.company_id!==companyId||existing.subject!==subject||existing.page!==page||hash(existing.transcript)!==hash(shared)||first?.ticket_id!==id||first?.body!==message)fail('23505','Ticket request conflict');
    return detail(tx,actor,id);
   }
-  if((await tx.list('support_tickets',[{field:'created_by',value:actorId}])).filter(row=>Date.parse(row.created_at)>hour).length>=10)fail('P0429','Support rate limit');
+  if((await tx.list('support_tickets',[{field:'created_by',value:actorId}],{limit:10,orderBy:'created_at',descending:true})).filter(row=>Date.parse(row.created_at)>hour).length>=10)fail('P0429','Support rate limit');
   // Message IDs are global: never overwrite a reply whose request ID was reused.
   if(await tx.get('support_messages',id))fail('23505','Ticket request conflict');
   const number=await nextNumber(tx);
@@ -121,7 +140,7 @@ export async function supportRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
    if(existing.ticket_id!==ticketId||existing.author_id!==actorId||existing.body!==message)fail('23505','Reply request conflict');
    return detail(tx,actor,ticketId);
   }
-  if((await tx.list('support_messages',[{field:'ticket_id',value:ticketId},{field:'author_id',value:actorId}])).filter(row=>Date.parse(row.created_at)>hour).length>=30)fail('P0429','Support rate limit');
+  if((await tx.list('support_messages',[{field:'ticket_id',value:ticketId},{field:'author_id',value:actorId}],{limit:30,orderBy:'created_at',descending:true})).filter(row=>Date.parse(row.created_at)>hour).length>=30)fail('P0429','Support rate limit');
   const staff=ticket.created_by!==actorId&&await assigned(tx,actor,ticket.company_id);
   tx.put('support_messages',id,{id,ticket_id:ticketId,author_id:actorId,author_kind:staff?'staff':'customer',body:message,created_at:now});
   tx.put('support_tickets',ticketId,{...ticket,status:staff?'waiting_customer':'open',version:ticket.version+1,updated_at:now});

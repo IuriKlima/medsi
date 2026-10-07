@@ -1,8 +1,8 @@
 import {detailedPostSchema} from '@askadia/contracts';
 import {z} from 'zod';
 import {respectsWeeklyLimit,weekStart} from '../../onboarding/seasonal';
-import type {DocumentTransaction,Row} from './store';
-import {companyAccess,fail,hash,uuid,text,audit,type FirestoreActor} from './access';
+import type {DocumentTransaction,Predicate,Row} from './store';
+import {companyAccess,fail,hash,uuid,text,audit,scopedRows,type FirestoreActor} from './access';
 import {context,approvalThrough,invalidate,now,dayInClinic,type JourneyContext} from './journey-state';
 import {purchaseState} from './commerce';
 export const contentOperations=['start_content_run','finish_content_details','finish_content_design','edit_calendar_item','approve_calendar_item','finish_calendar_video','start_calendar_dates','finish_calendar_dates','move_calendar_date'];
@@ -24,9 +24,12 @@ export async function contentRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
   if(!['dates','details','design'].includes(kind))fail('22023','Invalid run');
   if(!isDates)approvalThrough(ctx,5);
   if(await tx.get(table,id))fail('40001','Request already used');
-  const runs=await tx.list(table,[{field:'company_id',value:company}]),today=now().slice(0,10);
-  if(runs.filter(r=>r.kind===kind&&r.created_at.slice(0,10)===today).length>=(kind==='details'?3:kind==='dates'?4:36))fail('22023','Daily allowance exhausted');
-  const actorRuns=await tx.list(table,[{field:'actor_id',value:actor.id}]);if(actorRuns.filter(r=>r.kind===kind&&r.created_at.slice(0,10)===today).length>=(kind==='design'?72:kind==='details'?9:12))fail('22023','Daily user allowance exhausted');
+  const today=now().slice(0,10),tomorrow=new Date(Date.parse(today+'T00:00:00.000Z')+86400000).toISOString().slice(0,10);
+  const daily:Predicate[]=[{field:'kind',value:kind},{field:'created_at',op:'>=',value:today},{field:'created_at',op:'<',value:tomorrow}];
+  const companyLimit=kind==='details'?3:kind==='dates'?4:36,actorLimit=kind==='design'?72:kind==='details'?9:12;
+  const runs=await tx.list(table,[{field:'company_id',value:company},...daily],{limit:companyLimit,orderBy:'created_at'});
+  if(runs.length>=companyLimit)fail('22023','Daily allowance exhausted');
+  const actorRuns=await tx.list(table,[{field:'actor_id',value:actor.id},...daily],{limit:actorLimit,orderBy:'created_at'});if(actorRuns.length>=actorLimit)fail('22023','Daily user allowance exhausted');
   let snapshot:Row,frame=0,itemId:string|null=null;
   if(kind==='design'){
    frame=args.p_frame??0;if(!Number.isInteger(frame)||frame<0||frame>5)fail('22023','Invalid frame');
@@ -39,7 +42,8 @@ export async function contentRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
    const items=ctx.items.filter(i=>kind==='dates'?!i.planned_date:!i.details);if(!items.length)fail('22023','No pending content');snapshot={facts:ctx.facts,briefId:ctx.brief!.id,generation:ctx.brief!.generation,items};
    if(isDates){const month=dates.safeParse(args.p_month);if(!month.success||!month.data.endsWith('-01')||month.data<dayInClinic().slice(0,7)+'-01'||Date.parse(month.data)>Date.now()+366*86400000)fail('22023','Invalid planning month');snapshot.month=month.data;snapshot.planning=ctx.planning;snapshot.existingDates=ctx.items.filter(i=>i.planned_date).map(i=>i.planned_date);}
   }
-  if(runs.some(r=>r.kind===kind&&r.status==='running'&&Date.parse(r.lease_until)>Date.now()&&(kind!=='design'||r.item_id===itemId&&r.frame===frame)))fail('40001','Generation running');
+  const active:Predicate[]=[{field:'company_id',value:company},{field:'kind',value:kind},{field:'status',value:'running'},{field:'lease_until',op:'>',value:now()},...(kind==='design'?[{field:'item_id',value:itemId},{field:'frame',value:frame}]:[])];
+  if((await tx.list(table,active,{limit:1,orderBy:'lease_until'})).length)fail('40001','Generation running');
   tx.put(table,id,{id,company_id:company,actor_id:actor.id,kind,item_id:itemId,frame,snapshot,profile_version:ctx.version,approval_token:kind==='dates'?null:approvalThrough(ctx,5).token,status:'running',lease_until:new Date(Date.now()+300000).toISOString(),created_at:now(),updated_at:now()});return snapshot;
  }
  if(name.startsWith('finish_content_')||name==='finish_calendar_dates'){
@@ -73,8 +77,8 @@ export async function contentRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
   const row={id,company_id:company,item_id:item.id,revision:item.revision,object_path:path,size:args.p_size,name:text(args.p_name,1,150),created_by:actor.id,created_at:now()};tx.put('company_final_videos',id,row);tx.put('company_calendar_items',item.id,{...item,status:'draft',approved_revision:null,approved_by:null});return row;
  }
  if(name==='approve_calendar_item'){
-  if(!item.details)fail('22023','Review content first');const creatives=(await tx.list('company_creatives',[{field:'company_id',value:company}])).filter(r=>r.item_id===item.id&&r.revision===item.revision);
-  const videos=(await tx.list('company_final_videos',[{field:'company_id',value:company}])).filter(r=>r.item_id===item.id&&r.revision===item.revision);
+  if(!item.details)fail('22023','Review content first');const creatives=await scopedRows(tx,'company_creatives',[{field:'company_id',value:company},{field:'item_id',value:item.id},{field:'revision',value:item.revision}]);
+  const videos=await scopedRows(tx,'company_final_videos',[{field:'company_id',value:company},{field:'item_id',value:item.id},{field:'revision',value:item.revision}]);
   if(item.format==='video'){if(!videos.length)fail('22023','Final video required');}
   else {const count=item.format==='carrossel'?Math.max(2,item.details.slides.length):1;for(let frame=0;frame<count;frame++)if(!creatives.some(r=>r.frame===frame))fail('22023','Final creative required');}
   history(tx,item,actor);const next={...item,status:'approved',approved_revision:item.revision,approved_by:actor.id,approved_at:now()};tx.put('company_calendar_items',item.id,next);tx.put('company_calendar_approvals',item.id+'_'+item.revision+'_'+hash([...creatives,...videos].map(r=>r.id).sort()).slice(0,16),{...next,assets:[...creatives,...videos].map(r=>r.id),approval_actor_id:actor.id});history(tx,next,actor);audit(tx,actor,access.company,'calendar.approved',{itemId:item.id,revision:item.revision});return next;

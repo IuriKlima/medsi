@@ -48,4 +48,12 @@ describe('native Firestore administrative attendance (local transaction fixtures
  });
  it('escalates clinical questions before using AI or a rule-based response',async()=>{expect(await draftServiceReply({...settings(),mode:'flow',rules:[{match:'dose',reply:'Unsafe fixture must not be used',handoff:false}]},{},[{id:'fixture',body:'Qual dose de medicamento devo tomar?',fromMe:false,time:null,kind:'text',status:'received'}])).toMatchObject({handoff:true,model:null});});
  it('observes opt-out without granting consent or invoking a provider',async()=>{await activate();await call('inbox_record_opt_out',{p_thread:thread},service);expect((await store.run(tx=>tx.get('contacts',contact)))?.opted_out).toBe(true);expect(await claim()).toBeNull();});
+ it.each([501,1001])('continues past %i inactive target settings before a fresh message ages out',async(size)=>{
+  vi.useFakeTimers({toFake:['Date']});const started=Date.now();
+  try{await activate();await store.run(async tx=>{for(let n=0;n<size;n++)tx.put('company_service_settings','!'+String(n).padStart(4,'0'),{company_id:'inactive-'+n,channel:'whatsapp',automatic:false});});
+   let elapsed=2000,found=false;for(let n=0;n<45;n++){vi.setSystemTime(new Date(started+elapsed));const page=await call('inbox_auto_targets',{p_paginated:true},service) as {targets:Row[];hasMore:boolean};expect(page.targets.length).toBeLessThanOrEqual(25);if(page.targets.some(t=>t.companyId===company)){found=true;expect(page.hasMore).toBe(false);break;}expect(page.hasMore).toBe(true);elapsed+=page.hasMore?1000:15000;}
+   expect(found).toBe(true);expect(elapsed).toBeLessThan(300000);expect(await call('inbox_auto_claim',{p_message_id:'continuation-fixture',p_thread:thread,p_time:new Date(started+1000).toISOString()},service)).toMatchObject({token:expect.any(String)});
+  }finally{vi.useRealTimers();}
+ });
+
 });

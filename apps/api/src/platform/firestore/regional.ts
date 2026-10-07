@@ -1,3 +1,4 @@
+import {queueStates} from './queue-scan';
 import {classifyRegionalMap,regionalMapSchema,regionalMapRequestSchema,regionalDistance,regionalCompetitorUrl} from '@askadia/contracts';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -55,7 +56,7 @@ export async function regionalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
  server(actor);
  if(name==='claim_regional_research_server'){
   // Query each status separately so unrelated completed history cannot exhaust the queue scan.
-  const jobs=[...await tx.list('company_regional_research',[{field:'status',value:'pending'}]),...await tx.list('company_regional_research',[{field:'status',value:'running'}])];
+  const jobs=await queueStates(tx,'company_regional_research',['pending','running']);
   for(const job of jobs.filter(due).sort((a,b)=>a.created_at.localeCompare(b.created_at))){
    const access=await eligible(tx,job);if(!access){tx.put('company_regional_research',job.id,stale(job));continue;}
    if(job.attempts>=3){tx.put('company_regional_research',job.id,{...retry(job,'As fontes não responderam. Tente atualizar a pesquisa.'),status:'failed'});continue;}

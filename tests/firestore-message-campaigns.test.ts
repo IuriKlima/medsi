@@ -25,4 +25,18 @@ describe('native relationship campaigns — two fictitious clinics',()=>{
  it('blocks a second campaign to the same recipient while an earlier send is uncertain',async()=>{await activate();const job=await call('claim_message_campaign',{},server) as Row;await call('prepare_message_campaign',{p_id:job.id,p_token:job.token},server);await call('finish_message_campaign',{p_id:job.id,p_token:job.token,p_sent:false,p_provider_id:null},server);const other=randomUUID();await call('save_message_campaign',{p_data:{...data(),id:other}});await call('activate_message_campaign',{p_id:other,p_revision:1,p_active:true});vi.setSystemTime(new Date(Date.now()+61000));expect(await call('claim_message_campaign',{},server)).toBeNull();});
  it('limits abandoned reservations to three claims per approved content revision',async()=>{await activate();let last:Row|undefined;for(let n=0;n<3;n++){last=await call('claim_message_campaign',{},server) as Row;expect(last).toBeTruthy();vi.setSystemTime(new Date(Date.now()+300001));}expect(await call('claim_message_campaign',{},server)).toBeNull();expect(await store.run(tx=>tx.get('message_campaign_deliveries',last!.id))).toMatchObject({state:'canceled',attempts:3});});
  it('persists optout and import cannot silently restore revoked consent',async()=>{await call('revoke_campaign_contact',{p_id:recipient});await call('import_campaign_students',{p_students:[{externalId:'crm:'+contact,name:'Fixture',phone:'+5511999999999',birthday:null,lastAttendance:null,status:'active',consent:true,tag:''}],p_source:'csv'});expect(await store.run(tx=>tx.get('campaign_students',recipient))).toMatchObject({consent:false,opted_out:true});expect(await call('preview_message_campaign',{p_id:id})).toMatchObject({total:0});});
+ it('claims through more than 1000 old deliveries and still honors an old uncertain recipient lock',async()=>{
+  await activate();await store.run(async tx=>{for(let n=0;n<1001;n++)tx.put('message_campaign_deliveries','history-'+n,{id:'history-'+n,company_id:company,campaign_id:id,phone:'+5511777777777',state:n%2?'sent':'canceled',event_key:'old',created_at:'2025-01-01T12:00:00Z'});});
+  const job=await call('claim_message_campaign',{},server) as Row;expect(job).toMatchObject({companyId:company,phone:'+5511999999999'});
+  await call('prepare_message_campaign',{p_id:job.id,p_token:job.token},server);await call('finish_message_campaign',{p_id:job.id,p_token:job.token,p_sent:false,p_provider_id:null},server);
+  const other=randomUUID();await call('save_message_campaign',{p_data:{...data(),id:other}});await call('activate_message_campaign',{p_id:other,p_revision:1,p_active:true});vi.setSystemTime(new Date(Date.now()+61000));
+  for(let n=0;n<3;n++)expect(await call('claim_message_campaign',{},server)).toBeNull();
+ });
+
+ it('continues past 250 ineligible active campaigns inside the approved one-hour window',async()=>{
+  await activate();await store.run(async tx=>{for(let n=0;n<250;n++)tx.put('message_campaigns','!'+String(n).padStart(4,'0'),{id:'!'+n,status:'active',revision:1,approved_revision:0});});
+  const started=Date.now();let job:Row|null=null;for(let n=0;n<255&&!job;n++){const page=await call('claim_message_campaign',{p_paginated:true},server) as {job:Row|null;hasMore:boolean};job=page.job;if(!job)expect(page.hasMore).toBe(true);vi.setSystemTime(new Date(Date.now()+(page.hasMore?1000:15000)));}
+  expect(job).toMatchObject({companyId:company});expect(Date.now()-started).toBeLessThan(3600000);
+ },20000);
+
 });
