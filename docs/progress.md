@@ -855,3 +855,12 @@ O prompt complementar recebido nesta sessão ampliou a baseline e substituiu dua
 - Nenhum deploy/push/merge, migração remota, mudança de credenciais/IAM/regras, dinheiro real, envio/publicação real ou DNS. Bloqueio de produção Firestore preservado. O responsável fará deploy privado e homologação; esta entrega ainda não autoriza venda como SaaS operacional.
 
 Verificação final desta retomada: `pnpm check` código zero — lint/tipos aprovados, 681 testes em 81 arquivos aprovados, zero falhas, builds contracts/integrations/API/worker/Next aprovados. `git diff --check` aprovado. API do build final iniciou e `/health` retornou `ok` em modo test/Firestore com banco/Auth `not-configured`. O preflight de modelos retornou `unconfigured`, sem geração real. Inventário: 156 operações exportadas e registradas (comparação executável sem diferenças), 167 chamadas RPC literais e 29 pendências legadas. Evidências locais em `/workspace/medsi-evidence`; não substituem homologação externa.
+
+
+## 2026-10-07 — correção dos pins e ativação local da coleta regional
+
+- Causa reproduzida: `persistentEvidence=true` suprimia Places também para localizar o endereço; sem ponto, a pesquisa de concorrentes retornava antes da consulta. Zoom fixo também podia ocultar marcadores de raios maiores.
+- Prévia privada/autenticada agora consulta endereço confirmado e candidatos OSM, verifica quota/permissões/versão novamente e aguarda confirmação explícita do ponto. Não persiste detalhes Google. Mapa enquadra todo o raio.
+- Chromium com componentes reais e respostas simuladas comprovou quatro marcadores visíveis e preenchimento automático das coordenadas, mantendo botão de confirmação. Tiles OSM receberam CONNECT 403 no ambiente; nenhuma proteção foi contornada.
+- API local reiniciada com `REGIONAL_RESEARCH_ENABLED=true`; health confirma enabled=true e databaseConfigured/trendsConfigured/placesConfigured=false. SerpApi e Places não possuem chave configurada; Firebase/Auth/Storage ausentes. Trends real não foi consultado. Configuração persistente de credenciais depende do canal seguro e aprovação específica; nenhum segredo alterado.
+- Verificação: pnpm check código zero, lint/tipos e todos os builds passaram; 690 testes em 82 arquivos, zero falhas. Web/API/worker locais continuam acessíveis. Relatório detalhado e roteiro A/B: `medsi-release-check-2026-10-07.md`; evidências em `/workspace/medsi-evidence`.

@@ -17,8 +17,8 @@ describe('Authenticated browser bridge for checkout and guided marketing',()=>{
  it('forwards integrated optional traffic, marketing facts, official channels and versioned publication routes',async()=>{
   const calls=vi.fn(async()=>new Response(JSON.stringify({ok:true}),{status:200}));vi.stubGlobal('fetch',calls);
   for(const suffix of ['marketing-facts','inbox/policy','whatsapp-cloud/status','social-publications']){const path='companies/'+company+'/'+suffix;expect((await GET(request('GET',path),context(path))).status).toBe(200);}
-  for(const suffix of ['regional-research/competitors','launch/planning-preferences','launch/traffic-preference','marketing-facts','instagram/research','inbox/policy','inbox/consent','inbox/opt-out','whatsapp-cloud/connect','social-publications','social-publications/'+execution+'/approve','social-publications/'+execution+'/control','social-publications/'+execution+'/edit']){const path='companies/'+company+'/'+suffix;expect((await POST(request('POST',path),context(path))).status).toBe(200);}
-  expect(calls).toHaveBeenCalledTimes(17);
+  for(const suffix of ['regional-research/map-preview','regional-research/competitors','launch/planning-preferences','launch/traffic-preference','marketing-facts','instagram/research','inbox/policy','inbox/consent','inbox/opt-out','whatsapp-cloud/connect','social-publications','social-publications/'+execution+'/approve','social-publications/'+execution+'/control','social-publications/'+execution+'/edit']){const path='companies/'+company+'/'+suffix;expect((await POST(request('POST',path),context(path))).status).toBe(200);}
+  expect(calls).toHaveBeenCalledTimes(18);
  });
  it('streams private publication preview bytes with verified authorization',async()=>{
   const path='companies/'+company+'/social-publications/media/'+'a'.repeat(64),bytes=new Uint8Array([255,216,255,217]);const calls=vi.fn(async()=>new Response(bytes,{headers:{'Content-Type':'image/jpeg'}}));vi.stubGlobal('fetch',calls);

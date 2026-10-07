@@ -1,6 +1,6 @@
 import {databaseConfigured,firebaseBackend} from './platform/config';
 import {DatabaseLifecycle} from './platform/lifecycle';
-import {RegionalResearchController,RegionalResearchWorker} from './onboarding/regional-research';
+import {RegionalResearchController,RegionalResearchWorker,regionalResearchReadiness} from './onboarding/regional-research';
 import {MedicalIntakeController} from './onboarding/medical-intake-controller';
 import {SupportController} from './support/controller';
 import {WhatsAppCloudController,WhatsAppCloudWebhookController} from './inbox/whatsapp-cloud-controller';
@@ -38,7 +38,7 @@ import { IdentityController } from './identity/controller';
 import { IdentityService } from './identity/service';
 @Controller()
 export class HealthController {
-  @Get('health') health(){return {status:'ok',service:'medsi-api',mode:process.env.NODE_ENV??'development',databaseProvider:process.env.DATABASE_PROVIDER==='firestore'?'firestore':firebaseBackend()?'firebase-sql-connect':'supabase',database:databaseConfigured()?'configured-not-homologated':'not-configured',authentication:(firebaseBackend()?Boolean(process.env.FIREBASE_PROJECT_ID):Boolean(process.env.SUPABASE_URL&&(process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY)))?'configured-not-homologated':'not-configured'};}
+  @Get('health') health(){return {status:'ok',service:'medsi-api',regionalResearch:regionalResearchReadiness(),mode:process.env.NODE_ENV??'development',databaseProvider:process.env.DATABASE_PROVIDER==='firestore'?'firestore':firebaseBackend()?'firebase-sql-connect':'supabase',database:databaseConfigured()?'configured-not-homologated':'not-configured',authentication:(firebaseBackend()?Boolean(process.env.FIREBASE_PROJECT_ID):Boolean(process.env.SUPABASE_URL&&(process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY)))?'configured-not-homologated':'not-configured'};}
   @Get('integrations') integrations(){return providers.map(provider=>({...provider,status:'unconfigured'}));}
 }
 @Module({

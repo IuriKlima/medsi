@@ -113,3 +113,12 @@ export async function collectRegionalMap(municipalityId:string|undefined,request
  }catch{result.state='unavailable';result.message='Não foi possível consultar os estabelecimentos. A localização foi preservada. Falha na fonte não significa ausência de concorrentes.';}
  return result;
 }
+
+/** A browser-only preview: Google coordinates are not written to a research snapshot.
+ * The customer must confirm the point before a persistent OSM collection starts. */
+export async function previewRegionalMap(facts:ProfileFacts,key:string,transport:typeof fetch=fetch):Promise<RegionalMap|null>{
+ let center:RegionalPoint|null;try{center=await locateAddress(facts,key,transport);}catch{return null;}
+ if(!center)return null;
+ const map=await collectRegionalMap(undefined,{center,radiusM:3000},transport,{facts,persistentEvidence:true});
+ return {...map,centerSource:'address',locationConfirmed:false,message:'Prévia do endereço cadastrado. Confira o pin e confirme a localização para salvar a pesquisa. '+map.message};
+}
