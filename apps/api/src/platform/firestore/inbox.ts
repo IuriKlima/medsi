@@ -73,6 +73,10 @@ export async function inboxRpc(tx:DocumentTransaction,actor:FirestoreActor,name:
  }
  return fail('FIRESTORE_OPERATION_PENDING','Unknown inbox operation');
 }
+/** A service window belongs to the official sender number that received it. */
+export async function officialServiceWindow(tx:DocumentTransaction,company:string,phoneId:string,thread:string){
+ return (await list(tx,'whatsapp_cloud_messages',company)).some(m=>m.phone_id===phoneId&&m.thread===thread&&!m.from_me&&Date.parse(m.expires_at)>Date.now()&&Date.parse(m.time)>=Date.now()-86400000&&Date.parse(m.time)<=Date.now()+60000);
+}
 /** Administrative automations require an explicit server-persisted policy and
  * contact consent. Missing/invalid hours, timezone or consent fail closed. */
 export async function automationAllowed(tx:DocumentTransaction,company:string,settings:Row|null,thread?:string){
@@ -81,7 +85,7 @@ export async function automationAllowed(tx:DocumentTransaction,company:string,se
  try{await companyAccess(tx,actor,company,'marketing.write');await companyAccess(tx,actor,company,'crm.write');if(!(await purchaseState(tx,actor,company)).aiAllowed)return false;}catch{return false;}
  if(!await connected(tx,company,'whatsapp',true)||!await serviceProfile(tx,company))return false;
  const channels=await list(tx,'company_channels',company),channel=channels.find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady)??channels.find(c=>c.provider==='evolution'&&c.status==='connected');if(channel?.metadata?.transport==='WHATSAPP-BAILEYS')return false;
- if(channel?.provider==='whatsapp_cloud'&&thread){const last=(await list(tx,'whatsapp_cloud_messages',company)).filter(m=>m.thread===thread&&!m.from_me).sort((a,b)=>Date.parse(b.time)-Date.parse(a.time))[0];if(!last||Date.parse(last.time)<Date.now()-86400000)return false;}
+ if(channel?.provider==='whatsapp_cloud'&&thread&&!await officialServiceWindow(tx,company,channel.remote_id,thread))return false;
  const policy=await tx.get('company_service_policies',company);if(!policy?.approved_at||policy.revision!==settings.revision||policy.profile_version!==(await tx.get('company_onboarding',company))?.profile_version)return false;
  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:policy.timezone,weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()),get=(type:string)=>parts.find(p=>p.type===type)?.value??'',day=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(get('weekday')),minute=Number(get('hour'))*60+Number(get('minute'));
   if(!Array.isArray(policy.hours)||!policy.hours.some((h:Row)=>h.day===day&&Number.isInteger(h.start)&&Number.isInteger(h.end)&&h.start>=0&&h.end<=1440&&h.start<h.end&&minute>=h.start&&minute<h.end))return false;

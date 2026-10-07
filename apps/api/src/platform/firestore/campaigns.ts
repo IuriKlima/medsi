@@ -5,7 +5,8 @@ import type {DocumentTransaction,Row} from './store';
 import {companyAccess,server,uuid,text,hash,fail,audit,type FirestoreActor} from './access';
 import {purchaseState} from './commerce';
 import {now} from './journey-state';
-export const messageCampaignOperations=['register_campaign_contacts','revoke_campaign_contact','import_campaign_students','save_message_campaign','preview_message_campaign','activate_message_campaign','claim_message_campaign','prepare_message_campaign','finish_message_campaign'];
+import {officialServiceWindow} from './inbox';
+export const messageCampaignOperations=['management_ingestion_status','set_management_ingestion_key','ingest_management_students','register_campaign_contacts','revoke_campaign_contact','import_campaign_students','save_message_campaign','preview_message_campaign','activate_message_campaign','claim_message_campaign','prepare_message_campaign','finish_message_campaign'];
 const list=(tx:DocumentTransaction,table:string,company:string)=>tx.list(table,[{field:'company_id',value:company}]);
 async function access(tx:DocumentTransaction,actor:FirestoreActor,company:string){const a=await companyAccess(tx,actor,company,'marketing.write');await companyAccess(tx,actor,company,'crm.write');return a;}
 function local(timezone:string){try{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:timezone||'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return {date:v.year+'-'+v.month+'-'+v.day,minutes:Number(v.hour)*60+Number(v.minute)};}catch{return fail('22023','Invalid clinic timezone');}}
@@ -14,12 +15,13 @@ function event(c:Row,s:Row,company:Row){const day=local(company.timezone).date,a
 function period(c:Row,company:Row,time=true){const stamp=local(company.timezone),minutes=Number(c.send_time.slice(0,2))*60+Number(c.send_time.slice(3,5));return stamp.date>=c.start_date&&(!c.end_date||stamp.date<=c.end_date)&&(!time||stamp.minutes>=minutes&&stamp.minutes<minutes+60);}
 async function eligible(tx:DocumentTransaction,c:Row,s:Row,company:Row,checkPeriod=true){if(s.company_id!==c.company_id||!s.consent||s.opted_out||Date.parse(s.updated_at)<Date.now()-c.max_data_age_days*86400000||c.active_only&&s.status!=='active'||c.tag&&c.tag!==s.tag)return false;const contacts=(await list(tx,'contacts',c.company_id)).filter(contact=>contact.phone_e164===s.phone);if(contacts.some(contact=>contact.opted_out||contact.opt_out))return false;return !checkPeriod||period(c,company,false);}
 async function official(tx:DocumentTransaction,company:string){return (await list(tx,'company_channels',company)).find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady===true)??null;}
-async function transport(tx:DocumentTransaction,company:string,phone:string,ignoreDelivery?:string){if((await list(tx,'message_campaign_deliveries',company)).some(d=>d.id!==ignoreDelivery&&d.phone===phone&&['reserved','sending','uncertain'].includes(d.state)))return false;const thread=phone.slice(1)+'@s.whatsapp.net',handoff=await tx.get('inbox_handoffs',company+'_whatsapp_'+hash(thread));if(handoff&&!handoff.released_at)return false;if((await list(tx,'inbox_auto_jobs',company)).some(j=>j.thread===thread&&['generating','dispatching'].includes(j.state))||(await list(tx,'inbox_dispatches',company)).some(j=>j.thread===thread&&['reserved','uncertain'].includes(j.state)))return false;const latest=(await list(tx,'whatsapp_cloud_messages',company)).filter(m=>m.thread===thread&&!m.from_me&&Date.parse(m.time)<=Date.now()+60000&&Date.parse(m.expires_at)>Date.now()).sort((a,b)=>Date.parse(b.time)-Date.parse(a.time))[0];return Boolean(latest&&Date.parse(latest.time)>Date.now()-86400000);}
+async function transport(tx:DocumentTransaction,company:string,phone:string,phoneId:string,ignoreDelivery?:string){if((await list(tx,'message_campaign_deliveries',company)).some(d=>d.id!==ignoreDelivery&&d.phone===phone&&['reserved','sending','uncertain'].includes(d.state)))return false;const thread=phone.slice(1)+'@s.whatsapp.net',handoff=await tx.get('inbox_handoffs',company+'_whatsapp_'+hash(thread));if(handoff&&!handoff.released_at)return false;if((await list(tx,'inbox_auto_jobs',company)).some(j=>j.thread===thread&&['generating','dispatching','uncertain'].includes(j.state))||(await list(tx,'inbox_dispatches',company)).some(j=>j.thread===thread&&['reserved','uncertain'].includes(j.state)))return false;return officialServiceWindow(tx,company,phoneId,thread);}
 async function candidates(tx:DocumentTransaction,c:Row,company:Row,approved=false){const deliveries=await list(tx,'message_campaign_deliveries',c.company_id),result=[];for(const s of await list(tx,'campaign_students',c.company_id)){if(!await eligible(tx,c,s,company))continue;if(approved&&!c.approved_audience?.some((a:Row)=>a.id===s.id&&a.phone===s.phone))continue;const match=event(c,s,company);if(!match||deliveries.some(d=>d.campaign_id===c.id&&d.phone===s.phone&&d.event_key===match.key&&d.state!=='canceled'))continue;result.push({student_id:s.id,name:s.name,phone:s.phone,days_absent:match.absent,event_key:match.key});}return result.sort((a,b)=>a.student_id.localeCompare(b.student_id));}
 async function cancel(tx:DocumentTransaction,company:string,predicate:(d:Row)=>boolean){for(const d of await list(tx,'message_campaign_deliveries',company))if(d.state==='reserved'&&predicate(d))tx.put('message_campaign_deliveries',d.id,{...d,state:'canceled',lease_until:null,updated_at:now()});}
 async function campaign(tx:DocumentTransaction,company:string,id:unknown){const row=await tx.get('message_campaigns',uuid(id));if(!row||row.company_id!==company)fail('42501','Campaign unavailable');return row!;}
 async function execution(tx:DocumentTransaction,c:Row){if(c.status!=='active'||c.approved_revision!==c.revision)return null;try{const actor:FirestoreActor={role:'authenticated',id:c.approved_by};const a=await access(tx,actor,c.company_id);await companyAccess(tx,actor,c.company_id,'content.approve');const onboarding=await tx.get('company_onboarding',c.company_id);if(onboarding?.profile_version!==c.profile_version||onboarding?.confirmed_revision!==onboarding?.revision||!(await purchaseState(tx,actor,c.company_id)).aiAllowed)return null;const channel=await official(tx,c.company_id);if(!channel||channel.id!==c.approved_channel_id||channel.remote_id!==c.approved_phone_id)return null;return {actor,company:a.company,channel};}catch{return null;}}
 export async function messageCampaignRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row):Promise<unknown>{
+ if(['management_ingestion_status','set_management_ingestion_key','ingest_management_students'].includes(name))return managementRpc(tx,actor,name,args);
  if(!['claim_message_campaign','prepare_message_campaign','finish_message_campaign'].includes(name)){
   const company=uuid(args.p_company_id),a=await access(tx,actor,company);
   if(name==='register_campaign_contacts'){
@@ -53,7 +55,7 @@ export async function messageCampaignRpc(tx:DocumentTransaction,actor:FirestoreA
   for(const c of await tx.list('message_campaigns',[{field:'status',value:'active'}])){
    const run=await execution(tx,c);if(!run||!period(c,run.company))continue;const day=local(run.company.timezone).date,current=await list(tx,'message_campaign_deliveries',c.company_id);
    if(current.some(d=>d.state!=='canceled'&&Date.parse(d.created_at)>Date.now()-60000)||current.filter(d=>d.campaign_id===c.id&&d.state!=='canceled'&&localDate(d.created_at,run.company.timezone)===day).length>=c.daily_limit)continue;
-   for(const s of await candidates(tx,c,run.company,true)){if(!await transport(tx,c.company_id,s.phone))continue;const key=hash(c.id+'/'+s.phone+'/'+s.event_key),prior=await tx.get('message_campaign_delivery_keys',key),old=prior?await tx.get('message_campaign_deliveries',prior.delivery_id):null;if(old&&old.state!=='canceled'||(old?.attempts??0)>=3&&old?.revision===c.revision)continue;
+   for(const s of await candidates(tx,c,run.company,true)){if(!await transport(tx,c.company_id,s.phone,run.channel.remote_id))continue;const key=hash(c.id+'/'+s.phone+'/'+s.event_key),prior=await tx.get('message_campaign_delivery_keys',key),old=prior?await tx.get('message_campaign_deliveries',prior.delivery_id):null;if(old&&old.state!=='canceled'||(old?.attempts??0)>=3&&old?.revision===c.revision)continue;
     const id=old?.id??randomUUID(),token=randomUUID(),body=personalizeCampaign(c.message,{name:s.name,daysAbsent:s.days_absent},run.company.name);const row={id,company_id:c.company_id,campaign_id:c.id,student_id:s.student_id,revision:c.revision,event_key:s.event_key,phone:s.phone,body,attempts:old?.revision===c.revision?(old!.attempts??0)+1:1,state:'reserved',claim_token:token,channel_id:run.channel.id,phone_id:run.channel.remote_id,lease_until:new Date(Date.now()+300000).toISOString(),provider_id:null,error:null,created_at:now(),updated_at:now()};tx.put('message_campaign_deliveries',id,row);tx.put('message_campaign_delivery_keys',key,{company_id:c.company_id,delivery_id:id});return {id,token,companyId:c.company_id,actorId:c.approved_by,phone:s.phone,phoneId:run.channel.remote_id,body,transport:'whatsapp_cloud'};
    }
   }return null;
@@ -61,6 +63,43 @@ export async function messageCampaignRpc(tx:DocumentTransaction,actor:FirestoreA
  const id=uuid(args.p_id),d=await tx.get('message_campaign_deliveries',id);if(!d||d.claim_token!==args.p_token)return false;
  if(name==='finish_message_campaign'){if(d.state!=='sending')return false;const sent=args.p_sent===true&&typeof args.p_provider_id==='string'&&args.p_provider_id.length>0;tx.put('message_campaign_deliveries',id,{...d,state:sent?'sent':'uncertain',error:sent?null:'provider_outcome_unknown',provider_id:sent?text(args.p_provider_id,1,200):null,lease_until:null,updated_at:now()});return true;}
  if(d.state!=='reserved'||Date.parse(d.lease_until)<=Date.now())return false;const c=await tx.get('message_campaigns',d.campaign_id),run=c?await execution(tx,c):null,s=await tx.get('campaign_students',d.student_id);const match=c&&s&&run?event(c,s,run.company):null;
- if(!c||!run||!s||c.status!=='active'||c.revision!==d.revision||run.channel.id!==d.channel_id||run.channel.remote_id!==d.phone_id||!period(c,run.company)||s.phone!==d.phone||!await eligible(tx,c,s,run.company)||match?.key!==d.event_key||!c.approved_audience.some((a:Row)=>a.id===s.id&&a.phone===s.phone)||!await transport(tx,c.company_id,d.phone,d.id)){tx.put('message_campaign_deliveries',id,{...d,state:'canceled',error:'approval_consent_or_channel_changed',lease_until:null,updated_at:now()});return false;}
+ if(!c||!run||!s||c.status!=='active'||c.revision!==d.revision||run.channel.id!==d.channel_id||run.channel.remote_id!==d.phone_id||!period(c,run.company)||s.phone!==d.phone||!await eligible(tx,c,s,run.company)||match?.key!==d.event_key||!c.approved_audience.some((a:Row)=>a.id===s.id&&a.phone===s.phone)||!await transport(tx,c.company_id,d.phone,run.channel.remote_id,d.id)){tx.put('message_campaign_deliveries',id,{...d,state:'canceled',error:'approval_consent_or_channel_changed',lease_until:null,updated_at:now()});return false;}
  tx.put('message_campaign_deliveries',id,{...d,state:'sending',updated_at:now(),lease_until:new Date(Date.now()+300000).toISOString()});return true;
+}
+
+// The public ingestion route supplies only a token hash. Resolve its tenant here;
+// never accept a caller-selected company or expose credential/event collections.
+async function managementRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row):Promise<unknown>{
+ if(name==='ingest_management_students'){
+  server(actor);
+  const tokenHash=text(args.p_hash,64,64);if(!/^[a-f0-9]{64}$/.test(tokenHash))fail('42501','Invalid integration authorization');
+  const binding=await tx.get('management_ingestion_key_hashes',tokenHash),key=binding?await tx.get('management_ingestion_keys',binding.company_id):null;
+  if(!key||key.revoked_at||key.token_hash!==tokenHash||key.id!==binding?.key_id)fail('42501','Invalid integration authorization');
+  const importer:FirestoreActor={role:'authenticated',id:key!.created_by};await access(tx,importer,key!.company_id);
+  const event=uuid(args.p_event),observed=z.iso.datetime({offset:true}).safeParse(args.p_observed_at),bodyHash=text(args.p_body_hash,64,64);
+  if(!observed.success||Date.parse(observed.data)>Date.now()+300000||Date.parse(observed.data)<Date.now()-86400000||!/^[a-f0-9]{64}$/.test(bodyHash))fail('22023','Invalid integration data');
+  const eventKey=key!.company_id+'_'+key!.id+'_'+event,prior=await tx.get('management_ingestion_events',eventKey);
+  if(prior){if(prior.body_hash!==bodyHash)fail('40001','Event changed');return {duplicate:true,imported:0};}
+  if(key!.last_observed_at&&Date.parse(key!.last_observed_at)>Date.parse(observed.data!))fail('40001','Outdated snapshot');
+  if((await list(tx,'management_ingestion_events',key!.company_id)).filter(e=>e.key_id===key!.id&&Date.parse(e.received_at)>Date.now()-60000).length>=10)fail('22023','Rate limit');
+  const imported=await messageCampaignRpc(tx,importer,'import_campaign_students',{p_company_id:key!.company_id,p_students:args.p_students,p_source:'api'});
+  const externalIds=new Set((args.p_students as Row[]).map(s=>s.externalId));for(const row of await list(tx,'campaign_students',key!.company_id))if(externalIds.has(row.external_id))tx.put('campaign_students',row.id,{...row,updated_at:observed.data!});
+  tx.put('management_ingestion_events',eventKey,{company_id:key!.company_id,key_id:key!.id,event_id:event,body_hash:bodyHash,received_at:now()});
+  tx.put('management_ingestion_keys',key!.company_id,{...key,last_received_at:now(),last_observed_at:observed.data!});return {duplicate:false,imported};
+ }
+ const company=uuid(args.p_company_id);
+ if(name==='management_ingestion_status'){
+  await companyAccess(tx,actor,company,'marketing.read');const key=await tx.get('management_ingestion_keys',company);
+  return key?{id:key.id,active:!key.revoked_at,createdAt:key.created_at,lastReceivedAt:key.last_received_at,lastObservedAt:key.last_observed_at}:null;
+ }
+ const authorization=await access(tx,actor,company);if(!authorization.owner)fail('42501','Owner required');const prior=await tx.get('management_ingestion_keys',company);
+ if(args.p_hash===null){if(prior){tx.put('management_ingestion_keys',company,{...prior,revoked_at:now()});tx.remove('management_ingestion_key_hashes',prior.token_hash);}}
+ else{
+  const tokenHash=text(args.p_hash,64,64),requestedId=uuid(args.p_id);if(!/^[a-f0-9]{64}$/.test(tokenHash))fail('22023','Invalid key');
+  const binding=await tx.get('management_ingestion_key_hashes',tokenHash);if(binding&&binding.company_id!==company)fail('23505','Key already assigned');
+  const id=prior?.id??requestedId;if(prior&&prior.token_hash!==tokenHash)tx.remove('management_ingestion_key_hashes',prior.token_hash);
+  tx.put('management_ingestion_keys',company,{id,company_id:company,token_hash:tokenHash,created_by:actor.id,created_at:now(),revoked_at:null,last_received_at:prior?.last_received_at??null,last_observed_at:prior?.last_observed_at??null});
+  tx.put('management_ingestion_key_hashes',tokenHash,{company_id:company,key_id:id});
+ }
+ audit(tx,actor,authorization.company,'management.key_changed',{revoked:args.p_hash===null});return null;
 }

@@ -1,0 +1,60 @@
+# Auditoria de atendimento, CRM e campanhas — 07/10/2026
+
+Escopo: código nativo destinado ao projeto `medsi-80f4a`, sem conexão a esse projeto nesta auditoria. Estado: implementação e validação local com `MemoryStore` transacional simulado, fixtures fictícias e adaptadores de provedor simulados. Não é homologação do Firestore hospedado, da Meta ou de um gestor externo. Não houve envio, migração de dados, alteração de credenciais, IAM, regras/índices, deploy ou gasto.
+
+## Lacunas reproduzidas e corrigidas
+
+1. As rotas administrativas existentes chamavam `management_ingestion_status`, `set_management_ingestion_key` e `ingest_management_students`, ausentes do dispatcher Firestore. Os seis testes novos inicialmente falharam com `FIRESTORE_OPERATION_PENDING`. As operações agora estão no registro exportado por `firestore/campaigns.ts`, reutilizado pelo dispatcher existente. Não foi criado endpoint novo ou caminho fictício de sucesso.
+2. Uma mensagem automática com resultado `uncertain` podia ser repetida manualmente no Cloud, porque a reserva oficial verificava somente `inbox_dispatches`; o legado também verifica `inbox_auto_jobs`. A regressão retornou `true` antes da correção e agora retorna duplicidade sem reservar. Campanhas também passam a bloquear o destinatário enquanto existir envio automático incerto.
+3. O histórico recebido no número oficial anterior podia abrir a janela de resposta do número substituto. Reproduzido separadamente em envio manual, claim automático e claim de campanha. Os três caminhos agora usam `officialServiceWindow`, vinculando empresa, destinatário e `phone_id`, com mensagem recebida não expirada, até 24 horas e tolerância de relógio máxima de um minuto. Registro expirado não autoriza envio.
+
+## Matriz de caminhos auditados
+
+Os caminhos de coleção abaixo têm o prefixo privado `medsi/v1/`. As rotas empresariais têm o prefixo `/onboarding/companies/:id`, salvo indicação contrária. “Coberto” refere-se aos testes locais, não ao provedor real.
+
+| Módulo / caminho da API | Operação nativa e persistência | Autorização / evidência local |
+| --- | --- | --- |
+| CRM: `GET /crm`, `POST /crm/contacts`, `/stage` | `save_crm_contact`, `move_crm_opportunity`; `contacts`, `opportunities`, `stage_history`, `crm_requests` | Escrita `crm.write`, leitura `crm.read`; empresa explícita, contato/oportunidade e request isolados; `firestore-attendance`, jornada completa |
+| CRM: `POST /crm/conversations`, `/mode`, `/notes` | `open_company_conversation`, `set_conversation_mode`, `add_conversation_note`, `claim_company_reply`; `company_conversations`, `company_conversation_notes`, `company_reply_jobs` | IDs revalidados por empresa, revisão CAS, takeover/ator, cancelamento de jobs; `firestore-attendance`. `claim_company_reply` é operação legada sem executor adicional introduzido |
+| Histórico: `GET /crm/contacts/:contactId/history` | Consultas `contacts`, `opportunities`, `company_conversations`, `company_conversation_notes`, `stage_history`, `company_contact_channels`, `company_channels`; Cloud usa `read_whatsapp_cloud_inbox` | Todas as consultas possuem `company_id`; acesso revalidado após provedor. Inspeção do controlador e cobertura dos mapeamentos nativos; não foi homologado HTTP contra provedor |
+| Inbox: `GET /inbox`, `/threads`, `/messages`, `/media`; `POST /crm-sync` | Consultas `company_service_settings`, `company_quick_replies`, `company_channels`, `inbox_handoffs`; `sync_whatsapp_crm`; Cloud delega ao controlador oficial | `crm.read` / `crm.write`; Evolution exige instância `askadia-<empresa>`; Cloud sincroniza via webhook. `firestore-attendance`, `inbox`, `whatsapp-cloud` |
+| Inbox: `POST /takeover`, `/release`, `/send`, `/media-send` | `take_inbox_conversation`, `release_inbox_conversation`, `reserve_inbox_dispatch`, `finish_inbox_dispatch`; `inbox_handoffs`, `inbox_dispatches` | Takeover, deduplicação, opt-out, estado incerto e ator; Cloud usa reserva oficial. Mídia Cloud retorna indisponibilidade explícita. `firestore-attendance`, `inbox`, `whatsapp-cloud` |
+| Configuração: `GET/POST /inbox/policy`, `POST /settings`, `/quick-replies`, `/consent`, `/opt-out` | `read_service_policy`, `save_service_policy`, `save_service_settings`, `save_quick_reply`, `save_contact_consent`; `company_service_policies`, `company_service_settings`, `company_quick_replies`, `contacts` | Leitura `crm.read`; configurações exigem CRM e marketing; consentimento `crm.write`, evidência e ID do contato; CAS e perfil/horários. `firestore-attendance` |
+| Assistência: `POST /inbox/suggest`, `/generate-prompt`, `/preview` | `inbox_ai_context`, `inbox_prompt_context`; `inbox_daily_usage`, perfil confirmado e assinatura | CRM/marketing conforme operação; acesso pago, quota e minimização do perfil; geração externa atrás do adaptador. `firestore-attendance` |
+| Instagram/Facebook: `GET /inbox/meta/threads`, `/messages`; `POST /takeover`, `/send` | `read_company_meta_server`, `take_inbox_conversation`, `reserve_meta_dispatch`, `finish_inbox_dispatch`; cofre separado, handoff e reserva | Thread assinado vincula empresa/Página; permissões e janela verificadas pelo controlador. Persistência mapeada; chamadas Graph continuam dependentes de homologação |
+| WhatsApp Cloud: `GET /whatsapp-cloud/status`, `/threads`, `/messages`; `POST /connect`, `/takeover`, `/send`, `/disconnect` | `save_whatsapp_cloud_channel_server`, `read_company_whatsapp_server`, `read_whatsapp_cloud_inbox`, `reserve_whatsapp_cloud_dispatch`, operações compartilhadas de takeover/finish/disconnect | Dono para conexão; ação/ator explícitos no cofre; número atual e janela na reserva. `whatsapp-cloud` cobre provedores simulados, empresa, criptografia, janela, opt-out, deduplicação e incerteza |
+| Webhook: `GET/POST /webhooks/whatsapp-cloud` | `ingest_whatsapp_cloud_server`; `channel_remote_bindings`, `whatsapp_cloud_messages`, contato/oportunidade/link, canal, handoff | Assinatura dos bytes no controlador; RPC exclusivo `service_role`; WABA/número vinculados; evento idempotente. `whatsapp-cloud` |
+| Automação: `InboxAutomation` existente | `inbox_auto_targets`, `inbox_cloud_messages_server`, `inbox_auto_claim`, `inbox_auto_prepare`, `inbox_auto_finish`, `inbox_auto_observe_human`, `inbox_record_opt_out`; `inbox_auto_jobs` | Exclusivo `service_role`; perfil/pagamento/permissão/horário/consentimento/handoff e número revalidados; lease, incerteza sem retry. `firestore-attendance`, `whatsapp-cloud` |
+| Campanhas: `GET /campaigns`, `/recipients`; `POST /recipients/register`, `/recipients/revoke`, `/students/import` | `register_campaign_contacts`, `revoke_campaign_contact`, `import_campaign_students`; `campaign_students`, `campaign_recipient_keys`; leitura de `contacts` | CRM + marketing; audiência por empresa; consentimento explícito, opt-out persistente; `firestore-message-campaigns` |
+| Campanhas: `POST /campaigns/save`, `/preview`, `/activation` | `save_message_campaign`, `preview_message_campaign`, `activate_message_campaign`; `message_campaigns`, `message_campaign_versions`, `message_campaign_approvals` | CRM + marketing; aprovação adicional `content.approve`; revisão, audiência/telefone, canal, período e teto fixados na aprovação; `firestore-message-campaigns` |
+| Executor existente `CampaignDelivery` | `claim_message_campaign`, `prepare_message_campaign`, `finish_message_campaign`; `message_campaign_deliveries`, `message_campaign_delivery_keys`, credencial via `read_company_whatsapp_server` | Exclusivo `service_role`, claim/token/lease, revalidação, cota, janela/número atual e incerteza; `firestore-message-campaigns`, `message-campaign-worker` |
+| Gestão: `GET /management`, `POST /management/key` | **Portados:** `management_ingestion_status`, `set_management_ingestion_key`; `management_ingestion_keys/<company>`, `management_ingestion_key_hashes/<sha256>` | Status exige `marketing.read` e omite hash. Chave exige dono e CRM+marketing. Rotação/revogação auditadas sem segredo; `firestore-management-ingestion` pelo dispatcher real |
+| Integração: `POST /integrations/management/students` | **Portado:** `ingest_management_students`; importação existente mais `management_ingestion_events/<company>_<key>_<event>` | Entrada RPC somente `service_role`; tenant derivado do hash, operador reautorizado; replay/CAS, snapshot entre −24h/+5min, ordem temporal, até dez lotes/minuto, datas observadas e opt-out preservados; `firestore-management-ingestion` |
+
+Os componentes web auditados (`inbox-panel`, `crm-panel`, `campaigns-panel`, `campaign-recipients`, `official-whatsapp-connection`) usam as rotas da API; não possuem acesso direto a coleções ou bucket. Os módulos de atendimento/campanha não gravam arquivos em Firebase Storage. Mídia do legado passa pelo adaptador Evolution; suporte Cloud a anexos permanece explicitamente indisponível.
+
+## Port da integração administrativa
+
+Contrato comparado com `supabase/migrations/202609220008_management_ingestion.sql` e autorização de `202609220006_message_campaigns.sql` / `202609220007_campaign_delivery.sql`.
+
+- O endpoint existente emite o token uma vez e envia apenas SHA-256 ao RPC. O índice privado fornece resolução direta de tenant sem varredura global de chaves.
+- Rotação conserva a identidade da integração, histórico de replay e último snapshot, como no SQL. Revogação remove o lookup ativo; a autorização corrente do criador é verificada em cada lote.
+- Importação reutiliza as validações e preservação de opt-out do port nativo existente. Os campos `updated_at` dos destinatários usam a data de observação, evitando que recebimento tardio aparente atualizar a origem.
+- Coleções de chaves, hashes e eventos não foram adicionadas à lista de consultas de usuários. Não é necessária alteração de `client.ts`: o registro usa `messageCampaignOperations` já importado. Não foi editado o inventário compartilhado; essas três coleções precisam constar na próxima geração do inventário.
+
+## Evidência e limites
+
+As regressões foram executadas antes e depois das correções. Testes novos identificam explicitamente armazenamento simulado e impedem `fetch` real. Testes Cloud existentes injetam respostas de provedor e usam segredos sintéticos.
+
+A consulta nativa possui limite defensivo de 1.000 documentos, inclusive por empresa; em excesso falha explicitamente. As filas globais de automação e o histórico de eventos administrativos ainda precisam de particionamento/paginação para escala. A integração tem controle transacional de taxa e replay, mas não promete importação ilimitada nem retenção automática dos eventos. O `expires_at` de mensagens é filtrado em leitura/janela; TTL físico continua uma configuração externa não aplicada.
+
+Limitações preservadas: templates proativos fora da janela de 24h, anexos Cloud, importação de histórico anterior, recibos completos de entrega/leitura, homologação Meta/Evolution/gestor e validação de índices/IAM no projeto real. Reservas/envios incertos continuam exigindo reconciliação operacional; nenhuma correção força reenvio. Pollers existentes permanecem condicionados aos flags de servidor e não foram ativados.
+
+Validação final desta fatia (todos com código de saída 0):
+
+- `vitest run tests/firestore-management-ingestion.test.ts tests/firestore-message-campaigns.test.ts tests/firestore-attendance.test.ts tests/whatsapp-cloud.test.ts tests/message-campaign-worker.test.ts tests/inbox.test.ts tests/campaigns.test.ts tests/firestore-complete-journey.test.ts --maxWorkers=2`: **8 arquivos, 88 testes passaram**. Inclui 11 novos testes de regressão nesta fatia (6 de gestão, 3 Cloud e 2 de campanha).
+- ESLint dos três módulos nativos alterados e dos três arquivos de teste alterados/adicionados: passou.
+- `pnpm --filter @askadia/api typecheck`: passou.
+- `git diff --check`: passou.
+
+Comandos pnpm executados com `COREPACK_HOME=/tmp/medsi-corepack XDG_DATA_HOME=/tmp/medsi-data corepack pnpm`. `pnpm check` completo e revisão das alterações simultâneas são responsabilidade da integração raiz. Nenhum commit, push ou deploy foi feito nesta fatia.

@@ -6,7 +6,7 @@ import {firebaseServerApiKey} from './server-config';
 import {appOrigin} from '../auth/config';
 export const FIREBASE_SESSION_COOKIE='medsi_session';
 type User={id:string;email:string;email_confirmed_at:string;user_metadata?:{name?:string}};
-type Bootstrap={user:User;staff:Record<string,unknown>|null;profile:Record<string,unknown>|null;companies:Record<string,unknown>[]};
+type Bootstrap={user:User;staff:Record<string,unknown>|null;profile:Record<string,unknown>|null;companies:Record<string,unknown>[];companyMemberships?:Record<string,unknown>[]};
 class FirebaseAccessUnavailable extends Error {
  constructor(quota=false){super(quota?'O banco de dados atingiu a cota disponível. Aguarde a liberação da cota para entrar.':'O acesso aos dados está temporariamente indisponível. Tente novamente em instantes.');}
 }
@@ -38,7 +38,15 @@ export async function firebaseServerClient():Promise<SupabaseClient>{
      if(maxRows!==undefined&&(!Number.isSafeInteger(maxRows)||maxRows<0))throw new Error('Invalid row limit');
      const data=await bootstrap();if(!data)return {data:null,error:{message:'Unauthenticated'}};
      // These views contain only records authorized by the API for this session.
-     let rows=table==='platform_staff'?(data.staff?[data.staff]:[]):table==='companies'?data.companies:table==='profiles'?(data.profile?[data.profile]:[]):null;
+     let rows=table==='platform_staff'?(data.staff?[data.staff]:[]):table==='companies'?data.companies:table==='company_members'?(data.companyMemberships??[]):table==='profiles'?(data.profile?[data.profile]:[]):null;
+     if(table==='company_onboarding'){
+      const company=filters.find(f=>f.key==='company_id')?.value;
+      const result=await rpc('company_onboarding_read',{p_company_id:company});
+      if(result.error)throw new Error('Onboarding unavailable');
+      const state=(result.data as {state?:Record<string,unknown>}|null)?.state;
+      if(!state||state.company_id!==company)throw new Error('Invalid company snapshot');
+      rows=[state];
+     }
      if(!rows)throw new Error('Unsupported server view');
      rows=rows.filter(row=>filters.every(f=>row[f.key]===f.value));
      if(sort){const key=sort;rows=[...rows].sort((a,b)=>String(a[key]).localeCompare(String(b[key])));}
@@ -54,11 +62,11 @@ export async function firebaseServerClient():Promise<SupabaseClient>{
  async function rpc(name:string,args:Record<string,unknown>={}){
   const failure=(code:string)=>({data:null,error:{code,message:'Não foi possível consultar os dados deste acesso.'}});
   if(!token)return failure('42501');
-  if(name!=='company_capabilities'&&name!=='company_purchase_state')return failure('FIRESTORE_OPERATION_PENDING');
+  if(name!=='company_capabilities'&&name!=='company_purchase_state'&&name!=='company_onboarding_read')return failure('FIRESTORE_OPERATION_PENDING');
   const company=args.p_company_id;
   if(typeof company!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(company)||Object.keys(args).some(key=>key!=='p_company_id'))return failure('22023');
   // Route only supported reads to endpoints that verify the user and clinic again.
-  const path=name==='company_capabilities'?'/operations/companies/'+company+'/capabilities':'/onboarding/companies/'+company+'/purchase';
+  const path=name==='company_capabilities'?'/operations/companies/'+company+'/capabilities':'/onboarding/companies/'+company+(name==='company_purchase_state'?'/purchase':'');
   try{
    const response=await fetch((process.env.API_INTERNAL_URL||process.env.API_ORIGIN||'http://127.0.0.1:4000')+path,{headers:{Authorization:'Bearer '+token},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
    if(!response.ok)return failure(response.status===401||response.status===403?'42501':'API_UNAVAILABLE');

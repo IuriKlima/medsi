@@ -19,7 +19,7 @@ async function seed(tx:DocumentTransaction){
   for(const unit of units){const id=hash({...base,...unit});if(!await tx.get(table,id))tx.put(table,id,{...base,...unit,id,status:'pending',attempts:0,token:null,lease_until:null,next_attempt_at:now(),created_at:now(),updated_at:now()});}
  }
 }
-async function valid(tx:DocumentTransaction,job:Row){const access=await eligible(tx,job);if(!access)return null;try{if(approvalThrough(access.ctx,5).token!==job.approval_token||access.ctx.brief?.id!==job.brief_id||access.ctx.brief?.generation!==job.generation)return null;}catch{return null;}if(job.kind==='design'&&!access.ctx.items.some(i=>i.id===job.item_id&&i.revision===job.revision))return null;return access;}
+async function valid(tx:DocumentTransaction,job:Row){const access=await eligible(tx,job);if(!access)return null;const setup=await tx.get('company_setup',job.company_id);if(!setup||setup.invalidated_at||setup.profile_version!==job.profile_version)return null;try{if(approvalThrough(access.ctx,5).token!==job.approval_token||access.ctx.brief?.id!==job.brief_id||access.ctx.brief?.generation!==job.generation)return null;}catch{return null;}if(job.kind==='design'&&!access.ctx.items.some(i=>i.id===job.item_id&&i.revision===job.revision))return null;return access;}
 export async function productionRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row){
  server(actor);
  if(name==='claim_content_production_server'){

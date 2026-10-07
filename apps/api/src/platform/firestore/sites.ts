@@ -7,22 +7,28 @@ import {purchaseState} from './commerce';
 
 export const siteOperations=['reserve_site_generation','save_company_site','approve_company_site','publish_company_site','set_site_domain','set_site_slug','verify_site_domain_server','read_published_site_server','enqueue_company_site','claim_company_site_server','finish_company_site_server'];
 const blank=(company:string)=>({company_id:company,slug:null,revision:0,profile_version:null,draft:null,published:null,published_revision:null,published_at:null,approval:null,updated_at:now()});
+// Keep evidence for the public snapshot separate from approval of the editable draft.
+function publishedApproval(site:Row|null){
+ const approval=site?.published_approval??site?.approval;
+ if(!site?.published||!approval||approval.revoked_at||approval.revision!==site.published_revision||approval.hash!==hash(site.published)||site.approval?.revision===site.published_revision&&site.approval.revoked_at)return null;
+ return approval;
+}
 async function profile(tx:DocumentTransaction,company:string,version:unknown){const state=await tx.get('company_onboarding',company);if(!confirmed(state)||state?.profile_version!==version||!await tx.get('company_profile_versions',company+'_'+version))fail('40001','Confirme a versão atual do perfil.');}
-async function materials(tx:DocumentTransaction,company:string,content:Row){for(const id of [...content.images,...(content.logo?[content.logo]:[])]){const file=await tx.get('onboarding_attachments',id);if(file?.company_id!==company||!['image/png','image/jpeg','image/webp'].includes(file.mime))fail('42501','Company materials required');}}
+async function materials(tx:DocumentTransaction,company:string,content:Row){for(const id of [...content.images,...(content.logo?[content.logo]:[])]){const file=await tx.get('onboarding_attachments',id);if(file?.company_id!==company||!['image/png','image/jpeg','image/webp'].includes(file.mime)||typeof file.object_path!=='string'||!file.object_path.startsWith(company+'/'))fail('42501','Company materials required');}}
 export async function siteRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row){
  if(name==='read_published_site_server'){
   server(actor);let company:string|null=null;
   if(args.p_company_id)company=uuid(args.p_company_id);
   else if(args.p_slug){const reservation=await tx.get('site_address_reservations','slug_'+args.p_slug);company=reservation?.company_id??null;}
   else if(args.p_hostname){let hostname:string;try{hostname=siteDomain(args.p_hostname);}catch{return null;}const reservation=await tx.get('site_address_reservations','domain_'+hostname);company=reservation?.company_id??null;if(company){const d=await tx.get('company_site_domains',company);if(d?.hostname!==hostname||!d.dns_verified_at||!d.routing_configured_at)return null;}}
-  if(!company)return null;const [s,c]=await Promise.all([tx.get('company_sites',company),tx.get('companies',company)]);return s?.published&&c&&!c.archived_at?{companyId:company,content:s.published,revision:s.published_revision}:null;
+  if(!company)return null;const [s,c]=await Promise.all([tx.get('company_sites',company),tx.get('companies',company)]);return publishedApproval(s)&&c&&!c.archived_at?{companyId:company,content:s!.published,revision:s!.published_revision}:null;
  }
  if(['claim_company_site_server','finish_company_site_server'].includes(name))return siteJobRpc(tx,actor,name,args);
  const company=uuid(args.p_company_id);
  if(name==='verify_site_domain_server'){
   server(actor);await companyAccess(tx,{role:'authenticated',id:uuid(args.p_actor)},company,'billing.manage');const d=await tx.get('company_site_domains',company),s=await tx.get('company_sites',company);
   if(!d||d.hostname!==args.p_hostname||d.verification_token!==args.p_token)fail('40001','Domain changed');
-  if(args.p_routed&&(!s?.published||s.approval?.revision!==s.published_revision||s.approval?.revoked_at))fail('42501','Publication approval required');
+  if(args.p_routed){const approval=publishedApproval(s);if(!approval)fail('42501','Publication approval required');await profile(tx,company,approval.profile_version);}
   tx.put('company_site_domains',company,{...d,dns_verified_at:now(),routing_configured_at:args.p_routed?now():d!.routing_configured_at});return true;
  }
  const action=['approve_company_site','publish_company_site'].includes(name)?'site.approve':['set_site_domain','set_site_slug'].includes(name)?'billing.manage':'marketing.write';
@@ -44,7 +50,7 @@ export async function siteRpc(tx:DocumentTransaction,actor:FirestoreActor,name:s
  }
  if(name==='save_company_site'){
   await profile(tx,company,args.p_profile_version);if(s.revision!==args.p_revision)fail('40001','Site changed');const parsed=siteContentSchema.safeParse(args.p_content);if(!parsed.success||JSON.stringify(args.p_content).length>40000)fail('22023','Invalid site');const content=parsed.data!;if(new Set(content.images).size!==content.images.length||content.images.includes(content.logo??''))fail('22023','Invalid image selection');await materials(tx,company,content);
-  const row={...s,draft:content,profile_version:args.p_profile_version,revision:s.revision+1,approval:null,updated_at:now()};tx.put('company_sites',company,row);tx.put('company_site_versions',company+'_'+row.revision,{company_id:company,revision:row.revision,profile_version:row.profile_version,content,created_at:now(),actor_id:actor.id});audit(tx,actor,access.company,'site.saved',{revision:row.revision});return row;
+  const row={...s,draft:content,profile_version:args.p_profile_version,revision:s.revision+1,published_approval:publishedApproval(s),approval:null,updated_at:now()};tx.put('company_sites',company,row);tx.put('company_site_versions',company+'_'+row.revision,{company_id:company,revision:row.revision,profile_version:row.profile_version,content,created_at:now(),actor_id:actor.id});audit(tx,actor,access.company,'site.saved',{revision:row.revision});return row;
  }
  if(['approve_company_site','publish_company_site'].includes(name)){
   if(s.revision!==args.p_revision||!s.draft)fail('40001','Site changed');
@@ -54,7 +60,7 @@ export async function siteRpc(tx:DocumentTransaction,actor:FirestoreActor,name:s
   }
   if(typeof args.p_publish!=='boolean')fail('22023','Invalid publication');
   if(args.p_publish){await profile(tx,company,s.profile_version);await materials(tx,company,s.draft);if(!s.approval||s.approval.revoked_at||s.approval.revision!==s.revision||s.approval.hash!==hash(s.draft))fail('42501','Approve this site version before publishing');}
-  tx.put('company_sites',company,{...s,published:args.p_publish?s.draft:null,published_revision:args.p_publish?s.revision:null,published_at:args.p_publish?now():null,approval:args.p_publish?s.approval:s.approval?{...s.approval,revoked_at:now()}:null});audit(tx,actor,access.company,args.p_publish?'site.published':'site.unpublished',{revision:s.revision});return true;
+  tx.put('company_sites',company,{...s,published:args.p_publish?s.draft:null,published_revision:args.p_publish?s.revision:null,published_at:args.p_publish?now():null,published_approval:args.p_publish?s.approval:null,approval:args.p_publish?s.approval:s.approval?{...s.approval,revoked_at:now()}:null});audit(tx,actor,access.company,args.p_publish?'site.published':'site.unpublished',{revision:s.revision});return true;
  }
  if(name==='set_site_domain'||name==='set_site_slug'){
   const domain=name==='set_site_domain',prior:Row|null=domain?await tx.get('company_site_domains',company):s,old=domain?prior?.hostname:s.slug;

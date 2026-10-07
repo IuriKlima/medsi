@@ -1,4 +1,4 @@
-import {automationAllowed} from './inbox';
+import {automationAllowed,officialServiceWindow} from './inbox';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import type {DocumentTransaction,Row} from './store';
@@ -48,9 +48,9 @@ export async function whatsappCloudRpc(tx:DocumentTransaction,actor:FirestoreAct
  if(name==='reserve_whatsapp_cloud_dispatch'){
   const id=uuid(args.p_id),thread=text(args.p_thread,1,200),body=text(args.p_body,1,4096);if(!/^[1-9][0-9]{5,19}@s\.whatsapp\.net$/.test(thread))fail('22023','Invalid WhatsApp recipient');const actorId=user(actor),handoff=await tx.get('inbox_handoffs',company+'_whatsapp_'+hash(thread));if(!handoff||handoff.actor_id!==actorId||handoff.released_at)fail('42501','Take over first');
   const channel=(await list(tx,'company_channels',company)).find(c=>c.provider==='whatsapp_cloud'&&c.status==='connected'&&c.metadata?.webhookReady);if(!channel)fail('42501','Official WhatsApp channel unavailable');
-  const recent=(await list(tx,'whatsapp_cloud_messages',company)).filter(m=>m.thread===thread&&!m.from_me).sort((a,b)=>Date.parse(b.time)-Date.parse(a.time))[0];if(!recent||Date.parse(recent.time)<Date.now()-86400000||Date.parse(recent.time)>Date.now()+60000)fail('22023','WhatsApp customer service window closed');const contact=(await list(tx,'contacts',company)).find(c=>c.phone_e164==='+'+thread.split('@')[0]);if(contact?.opted_out||contact?.opt_out)fail('42501','Contact opted out');
+  if(!await officialServiceWindow(tx,company,channel!.remote_id,thread))fail('22023','WhatsApp customer service window closed');const contact=(await list(tx,'contacts',company)).find(c=>c.phone_e164==='+'+thread.split('@')[0]);if(contact?.opted_out||contact?.opt_out)fail('42501','Contact opted out');
   const prior=await tx.get('inbox_dispatches',id);if(prior){if(prior.company_id!==company||prior.actor_id!==actorId)fail('42501','Dispatch unavailable');if(prior.thread!==thread||prior.body!==body||prior.provider!=='whatsapp_cloud')fail('40001','Request conflict');return false;}
-  const dispatches=await list(tx,'inbox_dispatches',company);if(dispatches.some(d=>d.thread===thread&&d.body===body&&['reserved','uncertain'].includes(d.state)))return false;if(dispatches.filter(d=>Date.parse(d.created_at)>Date.now()-60000).length>=30)fail('22023','Dispatch rate limit');tx.put('inbox_dispatches',id,{id,company_id:company,channel:'whatsapp',provider:'whatsapp_cloud',phone_id:channel!.remote_id,thread,actor_id:actorId,body,state:'reserved',provider_id:null,created_at:now(),updated_at:now()});return true;
+  const dispatches=await list(tx,'inbox_dispatches',company);if(dispatches.some(d=>d.thread===thread&&d.body===body&&['reserved','uncertain'].includes(d.state))||(await list(tx,'inbox_auto_jobs',company)).some(j=>j.thread===thread&&j.body===body&&['dispatching','uncertain'].includes(j.state)))return false;if(dispatches.filter(d=>Date.parse(d.created_at)>Date.now()-60000).length>=30)fail('22023','Dispatch rate limit');tx.put('inbox_dispatches',id,{id,company_id:company,channel:'whatsapp',provider:'whatsapp_cloud',phone_id:channel!.remote_id,thread,actor_id:actorId,body,state:'reserved',provider_id:null,created_at:now(),updated_at:now()});return true;
  }
  return fail('FIRESTORE_OPERATION_PENDING','Unknown official WhatsApp operation');
 }

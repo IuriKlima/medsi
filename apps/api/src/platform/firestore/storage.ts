@@ -1,3 +1,4 @@
+import {imageDescriptionDefaults} from '../../onboarding/image-description-schema';
 import {createHash} from 'node:crypto';
 import {firebaseBucket} from '../firebase-admin';
 import type {DocumentStore,DocumentTransaction,Row} from './store';
@@ -40,6 +41,6 @@ export async function recordAttachment(tx:DocumentTransaction,actor:FirestoreAct
  if(!ext[mime]||args.p_path!==company+'/onboarding/'+id+'.'+ext[mime]||typeof args.p_name!=='string'||!args.p_name.trim()||args.p_name.length>180||!Number.isInteger(args.p_size)||args.p_size<1||args.p_size>10485760)fail('22023','Invalid attachment');
  const object=await tx.get('storage_objects',hash('company-assets/'+args.p_path));if(object?.status!=='ready'||object.company_id!==company||object.mime!==mime||object.size!==args.p_size)fail('42501','Stored file required');
  const prior=await tx.get('onboarding_attachments',id);if(prior){if(prior.company_id!==company||prior.object_path!==args.p_path)fail('42501','Attachment unavailable');return prior;}
- const record={id,company_id:company,name:args.p_name,mime,size:args.p_size,object_path:args.p_path,uploaded_by:actor.id,created_at:new Date().toISOString()};tx.put('onboarding_attachments',id,record);audit(tx,actor,access.company,'attachment.uploaded',{id,mime,size:args.p_size});return record;
+ const record={...imageDescriptionDefaults(mime),id,company_id:company,name:args.p_name,mime,size:args.p_size,object_path:args.p_path,uploaded_by:actor.id,created_at:new Date().toISOString()};tx.put('onboarding_attachments',id,record);audit(tx,actor,access.company,'attachment.uploaded',{id,mime,size:args.p_size});return record;
 }
 

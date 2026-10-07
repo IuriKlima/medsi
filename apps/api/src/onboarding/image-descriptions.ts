@@ -2,11 +2,8 @@ import {databaseConfigured} from '../platform/config';
 import {Injectable,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
 import {z} from 'zod';
 import {serviceDb} from '../campaigns/ads';
-export const visualDescriptionSchema=z.object({
- description:z.string().min(10).max(2200),category:z.enum(['logo','space','equipment','activity','people','design_reference','other']),
- orientation:z.enum(['landscape','portrait','square']),colors:z.array(z.string().max(40)).max(6),
- visibleText:z.string().max(1000),recommendedUse:z.string().max(1200),alt:z.string().max(220),
-}).strict();
+import {visualDescriptionSchema} from './image-description-schema';
+export {visualDescriptionSchema} from './image-description-schema';
 export async function describeImage(bytes:Buffer,mime:string){
  if(!['image/jpeg','image/png','image/webp'].includes(mime)||!bytes.length||bytes.length>10485760)throw new Error('Invalid image');
  const model=process.env.GEMINI_DESCRIPTION_MODEL||'gemini-3.5-flash-lite';

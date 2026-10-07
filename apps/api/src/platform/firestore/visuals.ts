@@ -5,6 +5,7 @@ import {companyAccess,server,uuid,fail,hash,text,audit,type FirestoreActor} from
 import {context,approvalThrough,now} from './journey-state';
 import {eligible,due,liveLease,retry,stale} from './regional';
 import {purchaseState} from './commerce';
+import {imageDescriptionDefaults} from '../../onboarding/image-description-schema';
 export const visualOperations=['enqueue_visual_job','enqueue_brand_logo','claim_visual_job_server','finish_visual_job_server'];
 const extensions:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
 async function references(tx:DocumentTransaction,company:string,ids:string[]){const refs=[];for(const id of ids){const ref=await tx.get('onboarding_attachments',uuid(id));const object=ref?await tx.get('storage_objects',hash('company-assets/'+ref.object_path)):null;if(!ref||ref.company_id!==company||!extensions[ref.mime]||object?.status!=='ready'||object.company_id!==company||object.mime!==ref.mime||object.size!==ref.size)fail('42501','Company image required');refs.push({id,name:ref!.name,mime:ref!.mime,path:ref!.object_path});}return refs;}
@@ -49,6 +50,6 @@ export async function visualRpc(tx:DocumentTransaction,actor:FirestoreActor,name
  if(args.p_result===null){tx.put('company_visual_jobs',id,retry(job!,'O provedor não concluiu a imagem. O original foi preservado.'));return true;}
  const result=args.p_result,asset=uuid(result?.attachmentId),ext=extensions[result?.mime];if(!ext||!Number.isInteger(result.size)||result.size<1||result.size>10485760)fail('22023','Invalid image');const path=job!.company_id+'/onboarding/'+asset+'.'+ext,object=await tx.get('storage_objects',hash('company-assets/'+path));
  if(!object||object.company_id!==job!.company_id||object.status!=='ready'||object.mime!==result.mime||object.size!==result.size)fail('22023','Stored image required');if(await tx.get('onboarding_attachments',asset))fail('23505','Attachment already used');
- tx.put('onboarding_attachments',asset,{id:asset,company_id:job!.company_id,name:job!.kind==='brand_logo'?'Proposta de logo':job!.kind==='site_image'?'Foto editada':'Criativo da campanha',mime:result.mime,size:result.size,object_path:path,uploaded_by:job!.actor_id,created_at:now()});
+ tx.put('onboarding_attachments',asset,{id:asset,company_id:job!.company_id,name:job!.kind==='brand_logo'?'Proposta de logo':job!.kind==='site_image'?'Foto editada':'Criativo da campanha',mime:result.mime,size:result.size,object_path:path,uploaded_by:job!.actor_id,created_at:now(),...imageDescriptionDefaults(result.mime)});
  tx.put('company_visual_jobs',id,{...job,status:'completed',token:null,lease_until:null,result_attachment_id:asset,model:text(result.model,1,100),provider_usage:result.usage??null,image_quality:result.quality??null,image_size:result.dimensions??null,error:null,updated_at:now()});audit(tx,access.actor,(await companyAccess(tx,access.actor,job!.company_id)).company,'visual.completed',{jobId:id,attachmentId:asset,kind:job!.kind});return true;
 }

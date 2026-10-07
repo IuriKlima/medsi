@@ -59,11 +59,14 @@ export async function billingRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
  if(name==='confirm_asaas_cancellation_server'){
   if(environment(args.p_environment)!==binding!.environment||args.p_response?.id!==subscriptionId||args.p_response?.deleted!==true)fail('22023','Provider cancellation mismatch');
   const sub=await tx.get('company_subscriptions',binding!.company_id),checkout=await tx.get('company_billing_checkouts',binding!.checkout_id);if(!sub||!checkout)fail('22023','Subscription unavailable');
+  // A provider response may arrive after this clinic has replaced the old
+  // recurrence. Finalize its journal without cancelling the current subscription.
+  const superseded=binding!.terminal_superseded||sub!.provider_subscription_id!==subscriptionId;
   const generation=Number(binding!.generation)+1,result={...sub,status:'cancelled',provider_confirmed:true,provider_checked_at:new Date().toISOString(),cancelled_at:new Date().toISOString()};
-  tx.put('company_subscriptions',binding!.company_id,result);tx.put('company_billing_checkouts',binding!.checkout_id,{...checkout,status:'cancelled'});tx.put('billing_subscription_bindings',subscriptionId,{...binding,generation,applied_generation:generation,terminal_deleted:true});
+  if(!superseded)tx.put('company_subscriptions',binding!.company_id,result);tx.put('company_billing_checkouts',binding!.checkout_id,{...checkout,status:'cancelled'});tx.put('billing_subscription_bindings',subscriptionId,{...binding,generation,applied_generation:generation,terminal_deleted:true});
   const pendingEvents=await tx.list('billing_provider_events',[{field:'subscription_id',value:subscriptionId},{field:'status',value:'pending'}]);for(const event of pendingEvents)if(event.status==='pending')tx.put('billing_provider_events',hash({environment:binding!.environment,id:event.id}),{...event,status:'applied',applied_at:new Date().toISOString()});
   const scheduled=await tx.get('billing_reconciliation_jobs',subscriptionId);if(scheduled)tx.put('billing_reconciliation_jobs',subscriptionId,{...scheduled,status:'cancelled',lease_token:null,lease_until:null});
-  return result;
+  return superseded?{stale:true}:result;
  }
  if(name==='reserve_asaas_reconciliation_server'){
   const eventId=args.p_event_id?providerId(args.p_event_id):null,eventKey=eventId?hash({environment:binding!.environment,id:eventId}):null;
