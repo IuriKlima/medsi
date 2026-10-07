@@ -33,7 +33,7 @@ Usar o gestor de segredos do ambiente autorizado. `.env.example` só lista nomes
 ## 3. Banco / migração e permissões
 
 - Namespace nativo: `medsi/v1/<coleção>/<id>`. Coleções e RPCs em `medsi-firestore-operations.json` e guias de domínio. Não executar migrações SQL como substituto de Firestore.
-- O script existente `firebase:firestore:check` é leitura; `firebase:firestore:apply` escreve seed e exige confirmação de projeto. **Ele possui projeto fixo no código: conferir antes de usar.** Não executar apply automaticamente. Seed de catálogo não conclui migração nem libera produção.
+- `firebase:firestore:check` é leitura; `firebase:firestore:apply --project=<FIREBASE_PROJECT_ID>` escreve somente o seed ausente e exige correspondência explícita com o projeto do `.env`. Projeto e banco são configuráveis; não há mais projeto antigo fixo no código. `node scripts/bootstrap-firestore.mjs --plan` mostra o plano sem autenticar nem acessar a rede. Escrita exige autorização; seed de catálogo não conclui migração nem libera produção.
 - Regras existentes negam leitura/escrita direta do cliente. Admin SDK ignora essas regras; a autorização também depende da API, transações e IAM. Não ampliar regras/roles para contornar falhas.
 - Queries nativas geralmente usam igualdade por tenant ou status e ordenam o resultado no servidor. Conferir índices realmente necessários no ambiente de teste; limites atuais de consulta são 1.000 documentos e de documento 800 KB. Não há teste de carga que aprove esses limites em produção.
 - TTL/retention e exclusão de arquivos órfãos dependem de política operacional aprovada. Mensagens oficiais filtram expiração na leitura; gravar `expires_at` não cria TTL automaticamente.

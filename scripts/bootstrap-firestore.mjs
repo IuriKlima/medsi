@@ -1,37 +1,25 @@
 /* global console */
 import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {dirname,resolve} from 'node:path';
 import {createRequire} from 'node:module';
-const cliRequire=createRequire(import.meta.url);
-const project='atendimentomac-88940',databaseId='(default)';
-function encode(value){
- if(value===null)return {nullValue:null};
- if(typeof value==='string')return {stringValue:value};
- if(typeof value==='boolean')return {booleanValue:value};
- if(typeof value==='number')return {integerValue:String(value)};
- if(Array.isArray(value))return {arrayValue:{values:value.map(encode)}};
- return {mapValue:{fields:Object.fromEntries(Object.entries(value).map(([k,v])=>[k,encode(v)]))}};
-}
+import {bootstrapTarget,bootstrapWrites,bootstrapDocuments} from './firestore-bootstrap-core.mjs';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),cliRequire=createRequire(import.meta.url),appRequire=createRequire(resolve(root,'apps/api/package.json'));
+appRequire('dotenv').config({path:resolve(root,'.env'),quiet:true});
+function report(value){fs.mkdirSync(resolve(root,'.local'),{recursive:true});fs.writeFileSync(resolve(root,'.local/firestore-bootstrap-result.json'),JSON.stringify(value,null,2));console.log(JSON.stringify(value,null,2));}
 async function main(){
- const apply=process.argv.includes('--apply');if(apply&&!process.argv.includes('--project='+project))throw Error('Explicit project confirmation required');
+ const {project,databaseId,apply,plan}=bootstrapTarget(process.argv.slice(2),process.env),documents=bootstrapDocuments();
+ if(plan){report({project,databaseId,mode:'offline-plan',documents:documents.map(([path])=>path),remoteValidated:false,productionReady:false});return;}
  const auth=cliRequire('../node_modules/firebase-tools/lib/auth'),{requireAuth}=cliRequire('../node_modules/firebase-tools/lib/requireAuth'),api=cliRequire('../node_modules/firebase-tools/lib/apiv2');
- await requireAuth({project,projectId:project,nonInteractive:true,...auth.getProjectDefaultAccount(process.cwd())});
+ try{await requireAuth({project,projectId:project,nonInteractive:true,...auth.getProjectDefaultAccount(root)});}catch{throw Error('Firebase administrative access unavailable. Configure GOOGLE_APPLICATION_CREDENTIALS or an authorized Firebase CLI session; no data was written.');}
  const client=new api.Client({urlPrefix:'https://firestore.googleapis.com',apiVersion:'v1',auth:true}),firestore=cliRequire('../node_modules/firebase-tools/lib/gcp/firestore');
- const features=['strategy','content','crm','sites','inbox','triage','ads','campaigns','analytics'];
- const documents=[
-  ['medsi/v1',{application:'MedSI',schemaVersion:1,provider:'firestore',migrationStatus:'in-progress',productionReady:false,initializedAt:new Date().toISOString()}],
-  ['medsi/v1/plan_catalog/askadia_monthly',{id:'askadia_monthly',name:'MedSI Mensal',kind:'plan',price_cents:159700,features,quotas:{}}],
-  ['medsi/v1/plan_catalog/askadia_semiannual',{id:'askadia_semiannual',name:'MedSI Semestral · até 6 parcelas',kind:'plan',price_cents:800000,features,quotas:{}}]
- ];
  const base='projects/'+project+'/databases/'+databaseId+'/documents';
  const existing=await firestore.getDocuments(project,documents.map(([path])=>path),databaseId);
- const root=existing.documents.find(d=>d.name===base+'/medsi/v1');
- if(root&&(root.fields?.application?.stringValue!=='MedSI'||root.fields?.schemaVersion?.integerValue!=='1'))throw Error('Existing namespace requires review');
- const missing=documents.filter(([path])=>!existing.documents.some(d=>d.name===base+'/'+path));
- if(apply&&missing.length)await client.post(base+':commit',{writes:missing.map(([path,value])=>({update:{name:base+'/'+path,fields:encode(value).mapValue.fields},currentDocument:{exists:false}}))},{skipLog:{reqBody:true,resBody:true}});
+ const writes=bootstrapWrites(base,existing.documents,documents);
+ if(apply&&writes.length)await client.post(base+':commit',{writes},{skipLog:{reqBody:true,resBody:true}});
  const verify=apply?await firestore.getDocuments(project,documents.map(([path])=>path),databaseId):existing;
- const report={project,databaseId,mode:apply?'apply':'read-only',created:apply?missing.map(([p])=>p):[],pending:apply?[]:missing.map(([p])=>p),verifiedDocuments:verify.documents.length,productionReady:false};
- fs.mkdirSync('.local',{recursive:true});
- fs.writeFileSync('.local/firestore-bootstrap-result.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+ const pending=bootstrapWrites(base,verify.documents,documents).map(w=>w.update.name.slice(base.length+1));
+ report({project,databaseId,mode:apply?'apply':'read-only',created:apply?writes.map(w=>w.update.name.slice(base.length+1)):[],pending,verifiedDocuments:verify.documents.length,productionReady:false});
+ if(apply&&pending.length)throw Error('Initialization could not be verified; inspect the report before retrying.');
 }
 main().catch(e=>{console.error(e.message);process.exitCode=1;});
-
