@@ -1,3 +1,6 @@
+import {openChannel} from '../onboarding/channel-vault';
+import {cloudConfigured,cloudGraph,type CloudCredentials} from './whatsapp-cloud';
+import type {InboxMessage} from '@askadia/contracts';
 import {serviceDatabase} from '../platform/service';
 import {databaseConfigured} from '../platform/config';
 import {Injectable,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
@@ -6,7 +9,7 @@ import type {ServiceSettings} from '@askadia/contracts';
 import {draftServiceReply} from './assistant';
 import {decodeThread,evolutionChats,evolutionMessages,record} from './evolution';
 import {evolutionRequest} from '../onboarding/channels';
-export function automationConfigured(){return process.env.INBOX_AUTOMATION_ENABLED==='true'&&Boolean(databaseConfigured()&&process.env.EVOLUTION_API_URL&&process.env.EVOLUTION_API_KEY);}
+export function automationConfigured(){return process.env.INBOX_AUTOMATION_ENABLED==='true'&&Boolean(databaseConfigured()&&((process.env.EVOLUTION_API_URL&&process.env.EVOLUTION_API_KEY)||cloudConfigured()));}
 let lastPoll=0;
 export function automationReady(){return automationConfigured()&&Date.now()-lastPoll<90000;}
 @Injectable()
@@ -15,8 +18,27 @@ export class InboxAutomation implements OnModuleInit,OnModuleDestroy{
  onModuleInit(){if(!automationConfigured())return;this.db=serviceDatabase();this.timer=setTimeout(()=>void this.tick(),3000);}
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async rpc<T>(name:string,args:Record<string,unknown>={}):Promise<T>{const r=await this.db!.rpc(name,args);if(r.error)throw new Error('Automatic service database unavailable');return r.data as T;}
- private async tick(){try{const targets=await this.rpc<{companyId:string;since:string;instance:string}[]>('inbox_auto_targets');lastPoll=Date.now();for(const target of targets){if(this.stopped)break;try{await this.company(target);}catch{/* A failing company never blocks the other companies. No payloads in logs. */}}}catch{lastPoll=0;}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),15000);}}
- private async company(target:{companyId:string;since:string;instance:string}){
+ private async tick(){try{const targets=await this.rpc<{companyId:string;since:string;instance:string;provider?:string;phoneId?:string;actorId?:string}[]>('inbox_auto_targets');lastPoll=Date.now();for(const target of targets){if(this.stopped)break;try{await this.company(target);}catch{/* A failing company never blocks the other companies. No payloads in logs. */}}}catch{lastPoll=0;}finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),15000);}}
+ private async cloudCompany(target:{companyId:string;since:string;instance:string;provider?:string;phoneId?:string;actorId?:string}){
+  if(target.instance!=='cloud-'+target.companyId||!target.phoneId||!target.actorId)return;
+  const history=await this.rpc<(InboxMessage&{thread:string})[]>('inbox_cloud_messages_server',{p_company_id:target.companyId}),latest=new Map<string,InboxMessage&{thread:string}>();for(const message of history)latest.set(message.thread,message);
+  for(const last of [...latest.values()].slice(-30)){
+   if(this.stopped)return;if(!last.time||Date.parse(last.time)<=Math.max(Date.parse(target.since),Date.now()-300000))continue;
+   if(last.fromMe){await this.rpc('inbox_auto_observe_human',{p_company_id:target.companyId,p_thread:last.thread,p_message_id:last.id,p_time:last.time});continue;}
+   const messages=history.filter(m=>m.thread===last.thread),human=[...messages].reverse().find(m=>m.fromMe&&m.time&&Date.parse(m.time)>Date.parse(target.since));if(human)await this.rpc('inbox_auto_observe_human',{p_company_id:target.companyId,p_thread:last.thread,p_message_id:human.id,p_time:human.time});
+   const job=await this.rpc<{token:string;phoneId:string;settings:ServiceSettings;profile:unknown}|null>('inbox_auto_claim',{p_company_id:target.companyId,p_thread:last.thread,p_message_id:last.id,p_time:last.time});if(!job)continue;
+   const args={p_company_id:target.companyId,p_message_id:last.id,p_token:job.token};let dispatching=false;
+   try{
+    const draft=last.kind==='text'?await draftServiceReply(job.settings,job.profile,messages):{text:'Recebemos seu arquivo. Nossa equipe continuará o atendimento.',handoff:true};if(/\b(atendente|humano|pessoa real)\b/i.test(last.body))draft.handoff=true;
+    const current=await this.rpc<(InboxMessage&{thread:string})[]>('inbox_cloud_messages_server',{p_company_id:target.companyId,p_thread:last.thread});if(current.at(-1)?.id!==last.id||this.stopped){await this.rpc('inbox_auto_finish',{...args,p_state:'canceled',p_provider_id:null});continue;}
+    const channel=await this.rpc<{remote_id:string;status:string;cipher:string}|null>('read_company_whatsapp_server',{p_company_id:target.companyId,p_actor:target.actorId,p_action:'crm.write'});if(!channel||channel.status!=='connected'||channel.remote_id!==job.phoneId){await this.rpc('inbox_auto_finish',{...args,p_state:'canceled',p_provider_id:null});continue;}
+    const credentials=openChannel<CloudCredentials>(target.companyId,channel.cipher);if(!await this.rpc<boolean>('inbox_auto_prepare',{...args,p_body:draft.text,p_handoff:draft.handoff}))continue;
+    dispatching=true;const sent=await cloudGraph<{messages?:{id:string}[]}>(channel.remote_id,'messages',credentials.token,{messaging_product:'whatsapp',recipient_type:'individual',to:last.thread.split('@')[0],type:'text',text:{preview_url:false,body:draft.text}});const providerId=sent.messages?.[0]?.id;if(!providerId)throw new Error('Unconfirmed official dispatch');await this.rpc('inbox_auto_finish',{...args,p_state:'sent',p_provider_id:providerId});
+   }catch{await this.rpc('inbox_auto_finish',{...args,p_state:dispatching?'uncertain':'failed',p_provider_id:null}).catch(()=>{});}
+  }
+ }
+ private async company(target:{companyId:string;since:string;instance:string;provider?:string;phoneId?:string;actorId?:string}){
+ if(target.provider==='whatsapp_cloud'){await this.cloudCompany(target);return;}
  if(target.instance!=='askadia-'+target.companyId)return;
  const live=await evolutionRequest('/instance/connectionState/'+encodeURIComponent(target.instance));if(record(live.instance).state!=='open')return;
  const chats=(await evolutionChats(target.instance)).filter(c=>!c.group&&c.time&&Date.parse(c.time)>Math.max(Date.parse(target.since),Date.now()-300000)).slice(0,30);
@@ -24,6 +46,8 @@ export class InboxAutomation implements OnModuleInit,OnModuleDestroy{
  if(last.fromMe){await this.rpc('inbox_auto_observe_human',{p_company_id:target.companyId,p_thread:jid,p_message_id:last.id,p_time:last.time});continue;}
  // Observe phone/operator messages since activation even if a new inbound followed them.
  const outgoing=[...history.messages].reverse().find(m=>m.fromMe&&m.time&&Date.parse(m.time)>Date.parse(target.since));if(outgoing)await this.rpc('inbox_auto_observe_human',{p_company_id:target.companyId,p_thread:jid,p_message_id:outgoing.id,p_time:outgoing.time});
+ // Explicit opt-out stops assistance before generation or dispatch.
+ if(last.kind==='text'&&/\b(stop|unsubscribe|cancelar mensagens|n[aã]o (quero|desejo) (mais )?(receber|mensagens)|pare de (enviar|mandar))\b/i.test(last.body)){await this.rpc('inbox_record_opt_out',{p_company_id:target.companyId,p_thread:jid});continue;}
  const job=await this.rpc<{token:string;settings:ServiceSettings;profile:unknown}|null>('inbox_auto_claim',{p_company_id:target.companyId,p_thread:jid,p_message_id:last.id,p_time:last.time});if(!job)continue;
  const args={p_company_id:target.companyId,p_message_id:last.id,p_token:job.token};let dispatching=false;
  try{

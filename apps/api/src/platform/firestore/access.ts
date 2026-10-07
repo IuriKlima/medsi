@@ -1,3 +1,4 @@
+import {subscriptionEntitlement} from './billing';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DocumentTransaction,Row} from './store';
 export type FirestoreActor={role:'authenticated'|'service_role'|'anon';id:string|null};
@@ -26,6 +27,6 @@ export function audit(tx:DocumentTransaction,actor:FirestoreActor,company:Row,ac
 
 export async function capabilities(tx:DocumentTransaction,actor:FirestoreActor,id:string){
  const access=await companyAccess(tx,actor,id),subscription=await tx.get('company_subscriptions',id),plan=subscription?.plan_id?await tx.get('plan_catalog',subscription.plan_id):null;
- const enabled=subscription?.status==='active'&&Date.parse(subscription.current_period_end)>Date.now();
+ const enabled=subscriptionEntitlement(subscription).live;
  return {companyId:id,actions:access.actions,subscription:{planId:subscription?.plan_id??null,status:subscription?.status??'draft',weeklySupport:subscription?.weekly_support??false,periodEnd:subscription?.current_period_end??null},features:enabled?(plan?.features??[]):[],quotas:plan?.quotas??{},billingEnabled:false};
 }

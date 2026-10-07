@@ -19,7 +19,8 @@
     "firebase:sql:apply": "pnpm --filter @askadia/api exec tsx src/platform/migrate-cli.ts --apply",
     "firebase": "node node_modules/firebase-tools/lib/bin/firebase.js",
     "firebase:firestore:check": "node scripts/bootstrap-firestore.mjs",
-    "firebase:firestore:apply": "node scripts/bootstrap-firestore.mjs --apply"
+    "firebase:firestore:apply": "node scripts/bootstrap-firestore.mjs --apply",
+    "ai:models:check": "pnpm --filter @askadia/api exec tsx src/ai/model-preflight-cli.ts"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

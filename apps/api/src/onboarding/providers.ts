@@ -1,10 +1,10 @@
-import {agentModel} from '../ai/models';
+import {agentModel,agentModelsConfigured} from '../ai/models';
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { profileKeys, type OnboardingSnapshot, type FactInput, type ProfileKey } from '@askadia/contracts';
 const extraction=z.object({facts:z.array(z.object({key:z.enum(profileKeys),value:z.string().max(6000).nullable(),status:z.enum(['provided','unknown','deferred']),evidence:z.string().max(6000)})).max(22)});
-export const interpreterConfigured=()=>Boolean(process.env.OPENAI_API_KEY);
+export const interpreterConfigured=()=>agentModelsConfigured('chat');
 export async function interpret(snapshot:OnboardingSnapshot,message:string){
  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:8000,maxRetries:0});
  const response=await client.responses.parse({model:agentModel('chat'),reasoning:{effort:'none'},store:false,max_output_tokens:2500,

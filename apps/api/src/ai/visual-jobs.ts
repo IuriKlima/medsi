@@ -1,3 +1,4 @@
+import {agentModelsConfigured} from './models';
 import {databaseConfigured} from '../platform/config';
 import {randomUUID} from 'node:crypto';
 import {BadRequestException,Body,Controller,Get,Injectable,Param,Post,Req,ServiceUnavailableException,UseGuards,type OnModuleDestroy,type OnModuleInit} from '@nestjs/common';
@@ -7,7 +8,7 @@ import {result} from '../identity/service';
 import {adsAccess,serviceDb} from '../campaigns/ads';
 import {createVisual,type VisualRequest} from './images';
 
-export const visualJobsConfigured=()=>process.env.VISUAL_JOBS_ENABLED!=='false'&&Boolean(process.env.OPENAI_API_KEY&&databaseConfigured());
+export const visualJobsConfigured=()=>process.env.VISUAL_JOBS_ENABLED!=='false'&&Boolean(agentModelsConfigured('image')&&databaseConfigured());
 @Controller('onboarding/companies/:id/visual-jobs')
 @UseGuards(AuthGuard)
 export class VisualJobsController{

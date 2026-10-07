@@ -1,7 +1,8 @@
+import {agentModel} from './models';
 export type ImageReference={name:string;mime:string;bytes:Buffer};
 export type ImageRatio='16:9'|'4:5'|'1:1'|'9:16';
 export const imageSizes:Record<ImageRatio,string>={'16:9':'2048x1152','4:5':'1536x1920','1:1':'1792x1792','9:16':'1152x2048'};
-export const imageModel=()=>process.env.OPENAI_MODEL_IMAGE?.trim()||'gpt-image-2.5-sunburst';
+export const imageModel=()=>agentModel('image');
 export const imageQuality=()=>{const value=process.env.OPENAI_IMAGE_QUALITY?.trim()||'high';if(!['low','medium','high','xhigh','max'].includes(value))throw new Error('Qualidade de imagem inválida.');return value;};
 export type ImageUsage={input_tokens:number;output_tokens:number;total_tokens:number;input_tokens_details?:{text_tokens:number;image_tokens:number}};
 function usageOf(value:unknown):ImageUsage|null{if(!value||typeof value!=='object')return null;const u=value as Record<string,unknown>;const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0; if(!valid(u.input_tokens)||!valid(u.output_tokens)||!valid(u.total_tokens))return null;const d=u.input_tokens_details as Record<string,unknown>|undefined;return {input_tokens:u.input_tokens,output_tokens:u.output_tokens,total_tokens:u.total_tokens,...(d&&valid(d.text_tokens)&&valid(d.image_tokens)?{input_tokens_details:{text_tokens:d.text_tokens,image_tokens:d.image_tokens}}:{})};}

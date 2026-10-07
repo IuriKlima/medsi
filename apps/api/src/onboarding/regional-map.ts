@@ -34,7 +34,7 @@ const excludedTypes=new Set(['pharmacy','drugstore','store','beauty_salon','gym'
 const placeMask='places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.types,places.primaryTypeDisplayName';
 const normalized=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const httpUrl=(v?:string)=>{try{const u=new URL(v??'');return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password&&u.href.length<=500?u.href:null;}catch{return null;}};
-export type RegionalMapOptions={facts?:ProfileFacts;placesKey?:string;maxSpecialties?:number};
+export type RegionalMapOptions={facts?:ProfileFacts;placesKey?:string;maxSpecialties?:number;persistentEvidence?:boolean};
 async function google(path:string,key:string,mask:string,transport:typeof fetch,body?:unknown){
  const response=await transport('https://places.googleapis.com/v1/'+path,{method:body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(12000),headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':mask},...(body?{body:JSON.stringify(body)}:{})});
  if(!response.ok)throw Error('PLACES_UNAVAILABLE');return await response.json() as unknown;
@@ -91,7 +91,7 @@ async function osmCompetitors(center:RegionalPoint,radiusM:number,transport:type
  return list.sort((a,b)=>a.distanceM-b.distanceM||a.id.localeCompare(b.id)).slice(0,50);
 }
 export async function collectRegionalMap(municipalityId:string|undefined,request:RegionalMapRequest|undefined,transport:typeof fetch=fetch,options:RegionalMapOptions={}):Promise<RegionalMap>{
- const input=request?regionalMapRequestSchema.parse(request):undefined,key=options.placesKey?.trim();
+ const input=request?regionalMapRequestSchema.parse(request):undefined,key=options.persistentEvidence?undefined:options.placesKey?.trim();
  const result:RegionalMap={state:'pending',center:input?.center??null,viewport:null,radiusM:input?.radiusM??3000,locationConfirmed:Boolean(input),selectionConfirmed:false,...(input?{centerSource:'customer' as const}:{}),competitors:[],selectedIds:[],sourceUrl:'https://www.openstreetmap.org/copyright',message:'Marque e confirme a localização do seu atendimento para pesquisar estabelecimentos próximos. O centro do município serve apenas para navegar no mapa.'};
  if(!input){
   try{result.viewport=municipalityId?await viewport(municipalityId,transport):null;}catch{/* A missing map must not invent a coordinate. */}

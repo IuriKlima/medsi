@@ -1,3 +1,7 @@
+import {createHash} from 'node:crypto';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {metaAccess} from '@askadia/contracts';
+import {openChannel} from './channel-vault';
 import {queuePollDelay} from '../platform/queue-polling';
 import {databaseConfigured} from '../platform/config';
 import {Body,Controller,Injectable,Param,Post,Req,UseGuards,BadRequestException,ServiceUnavailableException,type OnModuleInit,type OnModuleDestroy} from '@nestjs/common';
@@ -10,6 +14,22 @@ import {collectRegionalMap} from './regional-map';
 import {collectRegionalAudience} from './regional-providers';
 export const regionalResearchConfigured=()=>process.env.REGIONAL_RESEARCH_ENABLED==='true'&&Boolean(databaseConfigured());
 type RegionalJob={id:string;companyId:string;actorId:string;profileVersion:number;token:string;facts:ProfileFacts;map?:RegionalMapRequest};
+/** Reads only tenant-bound server bridges. Provider tokens never enter research snapshots. */
+export function regionalFacebookProvider(db:SupabaseClient,job:Pick<RegionalJob,'companyId'|'actorId'>){return async()=>{
+ const [meta,ads]=await Promise.all([
+  db.rpc('read_company_meta_server',{p_company_id:job.companyId,p_actor:job.actorId,p_action:'marketing.write'}),
+  db.rpc('ad_credentials_server',{p_company_id:job.companyId,p_actor:job.actorId,p_provider:'meta',p_write:null})
+ ]);
+ const channel=result<{remote_id:string;cipher:string;metadata:{scopes?:string[];tasks?:string[];instagramId?:string;expiresAt?:string}}|null>(meta);
+ const account=result<{status:string;account_id:string|null;source_page:string|null}|null>(ads);
+ if(!channel||!account||account.status!=='connected')return null;
+ if(!/^\d+$/.test(channel.remote_id)||!/^act_\d+$/.test(account.account_id??'')||account.source_page!==channel.remote_id)throw new Error('META_ACCOUNT_BINDING_UNAVAILABLE');
+ const metadata=channel.metadata??{},access=metaAccess(metadata.scopes??[],metadata.instagramId??null,metadata.tasks??[]);
+ if(!access.adsRead||metadata.expiresAt&&(!Number.isFinite(Date.parse(metadata.expiresAt))||Date.parse(metadata.expiresAt)<=Date.now()))throw new Error('META_READ_AUTHORIZATION_UNAVAILABLE');
+ const secret=openChannel<{userToken?:string}>(job.companyId,channel.cipher);if(!secret.userToken)throw new Error('META_USER_AUTHORIZATION_UNAVAILABLE');
+ const binding=createHash('sha256').update(JSON.stringify({page:channel.remote_id,account:account.account_id,cipher:channel.cipher,metadata})).digest('hex');
+ return {account:account.account_id!,token:secret.userToken,binding};
+};}
 @Controller('onboarding/companies/:id')
 @UseGuards(AuthGuard)
 export class RegionalResearchController{
@@ -31,9 +51,8 @@ export class RegionalResearchWorker implements OnModuleInit,OnModuleDestroy{
  onModuleDestroy(){this.stopped=true;if(this.timer)clearTimeout(this.timer);}
  private async tick(){let job:RegionalJob|null=null;let failed=false;
   try{const db=serviceDb();job=result<RegionalJob|null>(await db.rpc('claim_regional_research_server'));if(job&&!this.stopped){const claimed=job;const progress=async(source:RegionalProgress['source'],state:RegionalProgress['state'])=>{if(process.env.DATABASE_PROVIDER==='firestore')result(await db.rpc('progress_regional_research_server',{p_id:claimed.id,p_token:claimed.token,p_source:source,p_state:state}));};
-   // Firestore does not yet expose the company-scoped Meta credential bridge.
-   const data=await collectRegionalAudience(job.facts,async()=>null,fetch,undefined,progress);
-   if(process.env.DATABASE_PROVIDER==='firestore'){await progress('map','running');data.map=await collectRegionalMap(data.ibge.data?.municipalityId,job.map,fetch,{facts:job.facts,placesKey:process.env.GOOGLE_PLACES_SERVER_KEY});await progress('map',data.map.state==='unavailable'?'unavailable':'completed');}result(await db.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:data}));}}
+   const data=await collectRegionalAudience(job.facts,regionalFacebookProvider(db,job),fetch,undefined,progress);
+   if(process.env.DATABASE_PROVIDER==='firestore'){await progress('map','running');const mapOptions={facts:job.facts,placesKey:process.env.GOOGLE_PLACES_SERVER_KEY,persistentEvidence:true};data.map=await collectRegionalMap(data.ibge.data?.municipalityId,job.map,fetch,mapOptions);await progress('map',data.map.state==='unavailable'?'unavailable':'completed');}result(await db.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:data}));}}
   catch{failed=true;if(job)await Promise.resolve(serviceDb().rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:null})).catch(()=>{});}
   finally{if(!this.stopped)this.timer=setTimeout(()=>void this.tick(),queuePollDelay(Boolean(job),failed,7000));}
  }

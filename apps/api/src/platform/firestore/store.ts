@@ -11,6 +11,12 @@ export interface DocumentTransaction {
 }
 export interface DocumentStore {run<T>(operation:(tx:DocumentTransaction)=>Promise<T>):Promise<T>}
 export const FIRESTORE_ROOT='medsi/v1';
+/** Reject values the Firestore SDK cannot persist before committing any writes. */
+export function assertFirestoreDocument(value:unknown,path='document'):void{
+ if(value===undefined)throw new Error('Undefined Firestore field: '+path);
+ if(typeof value==='number'&&!Number.isFinite(value))throw new Error('Nonfinite Firestore field: '+path);
+ if(value&&typeof value==='object')for(const [key,child] of Object.entries(value))assertFirestoreDocument(child,path+'.'+key);
+}
 export function firestoreDatabase(){
  if(process.env.NODE_ENV==='production'&&process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Firestore emulator is forbidden in production');
  return getFirestore(firebaseAdmin(),process.env.FIRESTORE_DATABASE_ID||'(default)');
@@ -38,7 +44,7 @@ class FirestoreTransaction implements DocumentTransaction {
   for(const write of this.writes.values())if(write.collection===collection){rows.delete(write.id);if(write.value&&filters.every(f=>write.value![f.field]===f.value))rows.set(write.id,structuredClone(write.value));}
   return [...rows.values()];
  }
- put(collection:string,id:string,value:Row){this.ref(collection,id);if(Buffer.byteLength(JSON.stringify(value),'utf8')>800000)throw new Error('Document size limit exceeded');this.writes.set(collection+'/'+id,{collection,id,value:structuredClone(value)});}
+ put(collection:string,id:string,value:Row){this.ref(collection,id);assertFirestoreDocument(value);if(Buffer.byteLength(JSON.stringify(value),'utf8')>800000)throw new Error('Document size limit exceeded');this.writes.set(collection+'/'+id,{collection,id,value:structuredClone(value)});}
  remove(collection:string,id:string){this.ref(collection,id);this.writes.set(collection+'/'+id,{collection,id,value:null});}
  flush(){for(const write of this.writes.values()){const ref=this.ref(write.collection,write.id);if(write.value===null)this.tx.delete(ref);else this.tx.set(ref,write.value);}}
 }

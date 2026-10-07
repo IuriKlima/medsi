@@ -7,7 +7,7 @@ export const assistedImplementation={priceCents:350000,giftLimit:100} as const;
 export function installmentAmounts(totalCents:number,count:number){const regular=Math.floor(totalCents/count);return {regular,last:totalCents-regular*(count-1)};}
 export type CommercePlanId=typeof commercePlans[number]['id'];
 export type Checkout={id:string;company_id:string;plan_id:CommercePlanId|'askadia_annual';status:'pending'|'test_approved'|'declined'|'cancelled';mode:'test';installment_cents:number;installments:number;total_cents:number;expires_at:string};
-export type PurchaseState={companyId:string;aiAllowed:boolean;accessMode:'live'|'test'|'none';testUntil:string|null;planId:string|null;onboardingComplete:boolean;setupComplete:boolean;canPurchase:boolean;canWrite:boolean;latestCheckout:Checkout|null;testCheckoutEnabled?:boolean};
+export type PurchaseState={companyId:string;aiAllowed:boolean;accessMode:'live'|'test'|'none';testUntil:string|null;planId:string|null;onboardingComplete:boolean;setupComplete:boolean;canPurchase:boolean;canWrite:boolean;latestCheckout:Checkout|null;testCheckoutEnabled?:boolean;asaasSandboxEnabled?:boolean};
 export const commerceFeatures=[
  ['Estratégia com direção','Diagnóstico do negócio e planos de curto, médio e longo prazo, conectados às metas da sua empresa.'],
  ['Concorrentes no radar','Organize referências locais e perfis do Instagram para orientar seu posicionamento com os dados disponíveis.'],
@@ -20,3 +20,7 @@ export const commerceFeatures=[
  ['Clareza para decidir','Dashboards, tarefas e indicadores das fontes conectadas, com sugestões para orientar os ajustes.'],
  ['Cada empresa no seu espaço','Perfis, materiais, equipe, permissões e integrações separados por empresa no workspace.'],
 ] as const;
+
+export type AsaasSubscription={company_id:string;plan_id:CommercePlanId;provider:'asaas';environment:'sandbox';status:string;provider_confirmed:boolean;provider_status?:string;provider_subscription_id:string;current_period_end:string|null;invoice_url?:string|null;cancellation_requested?:boolean};
+export type AsaasCheckout={id:string;company_id:string;plan_id:CommercePlanId;status:string;total_cents:number;provider_subscription_id:string|null;invoice_url?:string|null};
+export type AsaasBillingState={companyId:string;environment:'sandbox';customerConfigured:boolean;subscription:AsaasSubscription|null;checkout:AsaasCheckout|null};

@@ -1,3 +1,4 @@
+import {subscriptionEntitlement} from './billing';
 import {context,stages} from './journey-state';
 import {commercePlans,type PurchaseState} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
@@ -5,7 +6,7 @@ import {type FirestoreActor,user,server,uuid,companyAccess,audit,fail} from './a
 
 export const commerceOperations=['begin_test_checkout','complete_test_checkout_server'];
 const confirmed=(state:Row|null)=>Boolean(state&&state.profile_version>0&&state.confirmed_revision===state.revision);
-function testMode(){if(process.env.CHECKOUT_MODE!=='test')fail('22023','Test checkout is disabled');}
+function testMode(){if(process.env.CHECKOUT_MODE!=='test'||process.env.NODE_ENV==='production')fail('22023','Test checkout is disabled');}
 
 /** A test grant is persisted separately and must point to an approved checkout
  * for this clinic. Neither a missing subscription nor an env flag grants access. */
@@ -16,8 +17,8 @@ export async function purchaseState(tx:DocumentTransaction,actor:FirestoreActor,
  ]);
  const approved=grant?.checkout_id?await tx.get('company_test_checkouts',grant.checkout_id):null;
  const linked=Boolean(grant?.company_id===id&&approved?.company_id===id&&approved?.mode==='test'&&approved?.status==='test_approved');
- const live=Boolean(subscription?.status==='active'&&Date.parse(subscription.current_period_end)>Date.now());
- const test=Boolean(linked&&Date.parse(grant!.valid_until)>Date.now());
+ const {live,sandbox}=subscriptionEntitlement(subscription);
+ const test=Boolean(process.env.CHECKOUT_MODE==='test'&&process.env.NODE_ENV!=='production'&&linked&&Date.parse(grant!.valid_until)>Date.now());
  const canPurchase=access.actions.includes('billing.manage');
  let latest:Row|null=null;
  if(canPurchase){
@@ -27,7 +28,7 @@ export async function purchaseState(tx:DocumentTransaction,actor:FirestoreActor,
   if(!latest){const history=await tx.list('company_test_checkouts',[{field:'company_id',value:id}]);latest=history.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)))[0]??null;}
  }
  const setupValid=Boolean(setup&&!setup.invalidated_at&&setup.profile_version===onboarding?.profile_version&&confirmed(onboarding)&&stages(await context(tx,id)).every((s,i)=>s.approved&&s.basis===setup.bases?.[i]));
- return {companyId:id,aiAllowed:live||test,accessMode:live?'live':test?'test':'none',testUntil:linked?grant!.valid_until:null,planId:live?subscription!.plan_id:linked?approved!.plan_id:null,onboardingComplete:confirmed(onboarding),setupComplete:setupValid,canPurchase,canWrite:access.actions.includes('marketing.write'),latestCheckout:latest as PurchaseState['latestCheckout']};
+ return {companyId:id,aiAllowed:live||test||sandbox,accessMode:live?'live':test||sandbox?'test':'none',testUntil:sandbox?subscription!.current_period_end:linked?grant!.valid_until:null,planId:live||sandbox?subscription!.plan_id:linked?approved!.plan_id:null,onboardingComplete:confirmed(onboarding),setupComplete:setupValid,canPurchase,canWrite:access.actions.includes('marketing.write'),latestCheckout:latest as PurchaseState['latestCheckout']};
 }
 
 export async function commerceRpc(tx:DocumentTransaction,actor:FirestoreActor,name:string,args:Row){

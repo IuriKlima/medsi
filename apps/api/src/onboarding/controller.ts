@@ -1,5 +1,5 @@
 import {loadCurriculum} from './curriculum';
-import {agentModel} from '../ai/models';
+import {agentModelsConfigured} from '../ai/models';
 import {evolutionChats} from '../inbox/evolution';
 import {preferredContactName,meaningfulContactName} from '../inbox/contact-name';
 import {generateStrategy} from './strategy';
@@ -60,11 +60,12 @@ export class OnboardingController {
  @Post('companies/:id/strategy') async strategy(@Req() req:AuthRequest,@Param('id') id:string){return result(await req.actor.client.rpc('prepare_company_strategy',{p_company_id:uuid(id)}));}
  @Post('companies/:id/strategy/generate') async generate(@Req() req:AuthRequest,@Param('id') id:string,@Body() body:unknown){
   uuid(id);const input=parse(z.object({requestId:z.uuid(),feedback:z.string().trim().max(3000).default(''),month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional()}).strict(),body);await capability(req.actor,id,'marketing.write');
-  if(!process.env.OPENAI_API_KEY)throw new ServiceUnavailableException('Configure OpenAI e o modelo de estratégia no servidor.');
-  const brief=result<{facts:OnboardingSnapshot['state']['facts'];competitorEvidence?:unknown}>(await req.actor.client.rpc('start_company_strategy',{p_company_id:id,p_request_id:input.requestId}));
+  if(!agentModelsConfigured('strategy'))throw new ServiceUnavailableException('Configure OpenAI e um ID de modelo de estratégia validado no servidor.');
+  const currentMonth=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()).slice(0,7);if(input.month&&input.month!==currentMonth)throw new BadRequestException('O planejamento inicial cobre o mês atual.');
+  const brief=result<{facts:OnboardingSnapshot['state']['facts'];competitorEvidence?:unknown;planning?:import('./planning').PlanningPreferences}>(await req.actor.client.rpc('start_company_strategy',{p_company_id:id,p_request_id:input.requestId}));
   let output:Awaited<ReturnType<typeof generateStrategy>>;
-  try{const month=input.month??new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()).slice(0,7);result(await req.actor.client.rpc('strategy_feedback',{p_company_id:id,p_request:input.requestId,p_feedback:input.feedback}));output=await generateStrategy(brief.facts,input.feedback,month,brief.competitorEvidence,await loadCurriculum(req.actor.client,id,brief.facts));}catch{
-   await req.actor.client.rpc('finish_company_strategy',{p_company_id:id,p_request_id:input.requestId,p_output:null,p_model:agentModel('strategy'),p_response_id:null});await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'strategy',p_outcome:'failed'});throw new ServiceUnavailableException('A geração não retornou uma proposta válida. O briefing continua salvo. Tente novamente.');
+  try{const month=input.month??new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date()).slice(0,7);result(await req.actor.client.rpc('strategy_feedback',{p_company_id:id,p_request:input.requestId,p_feedback:input.feedback}));output=await generateStrategy(brief.facts,input.feedback,month,brief.competitorEvidence,await loadCurriculum(req.actor.client,id,brief.facts),brief.planning);}catch{
+   await req.actor.client.rpc('finish_company_strategy',{p_company_id:id,p_request_id:input.requestId,p_output:null,p_model:null,p_response_id:null});await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'strategy',p_outcome:'failed'});throw new ServiceUnavailableException('A geração não retornou uma proposta válida. O briefing continua salvo. Tente novamente.');
   }
   const saved=result(await req.actor.client.rpc('finish_company_strategy',{p_company_id:id,p_request_id:input.requestId,p_output:output.output,p_model:output.model,p_response_id:output.responseId}));
   await req.actor.client.rpc('finish_onboarding_provider',{p_company_id:id,p_request_id:input.requestId,p_kind:'strategy',p_outcome:'completed',p_usage:output.usage});result(await req.actor.client.rpc('enqueue_content_preparation',{p_company_id:id}));return saved;

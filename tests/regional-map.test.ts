@@ -21,6 +21,11 @@ describe('regional map — isolated provider fixtures',()=>{
   const map=await collectRegionalMap(undefined,{center:{lat:-22,lng:-47},radiusM:3000},async()=>new Response(JSON.stringify({remark:'runtime error: Query timed out',elements:[]})));
   expect(map.state).toBe('unavailable');expect(map.competitors).toEqual([]);
  });
+ it('keeps batch Google details out of persisted regional snapshots while preserving transient lookup support',async()=>{
+  const calls:string[]=[];const transport:typeof fetch=async(input)=>{calls.push(String(input));return new Response(JSON.stringify({elements:[]}));};
+  const result=await collectRegionalMap(undefined,{center:{lat:-22,lng:-47},radiusM:3000},transport,{placesKey:'fixture-key',persistentEvidence:true});
+  expect(result).toMatchObject({provider:'osm',competitors:[],state:'available'});expect(calls.every(url=>!url.includes('google'))).toBe(true);
+ });
  it('returns unavailable rather than claiming no competitors when the provider fails',async()=>{
   const map=await collectRegionalMap(undefined,{center:{lat:-22,lng:-47},radiusM:3000},async()=>{throw Error('fixture outage');});
   expect(map.state).toBe('unavailable');expect(map.competitors).toEqual([]);expect(map.locationConfirmed).toBe(true);

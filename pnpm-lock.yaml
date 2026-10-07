@@ -80,6 +80,9 @@ importers:
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
+      sharp:
+        specifier: 0.35.4
+        version: 0.35.4(@types/node@22.20.4)
       zod:
         specifier: ^4.1.0
         version: 4.6.5

@@ -140,12 +140,51 @@ describe('Firestore guided strategy — '+(emulator?'local emulator':'isolated m
  });
  it('completes five explicit approvals and setup without a subscription or external action',async()=>{
   await strategy();await approve(2);const j=await journey();expect(j.stages[2].data).toHaveLength(8);
-  expect(j.stages[2].data.every((r:Row)=>r.date>='2026-10-12')).toBe(true);
+  expect(j.stages[2].data.every((r:Row)=>r.date>='2026-10-05'&&r.date<='2026-10-31')).toBe(true);
   const job=await value(server.rpc('claim_company_launch_server'));expect(job.kind).toBe('recommendations');
   await value(server.rpc('finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:recommendations}));
   for(const stage of [3,4,5])await approve(stage);
   expect(await call('finish_company_setup')).toMatchObject({setupComplete:true,nextPath:'/empresa/'+company+'/preparacao'});expect(await call('company_purchase_state')).toMatchObject({aiAllowed:true,accessMode:'test',setupComplete:true});
   for(const collection of ['company_subscriptions','company_sites','outbound_messages','ad_executions'])expect(await store.run(tx=>tx.list(collection,[{field:'company_id',value:company}]))).toEqual([]);
+ });
+ it('persists a reversible traffic skip without creating campaigns or approving spending',async()=>{
+  await strategy();await approve(2);await approve(3);
+  const job=await value(server.rpc('claim_company_launch_server'));
+  await value(server.rpc('finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:recommendations}));await approve(4);
+  let j=await journey();await call('set_traffic_preference',{p_mode:'skipped',p_basis:j.stages[4].basis});
+  j=await journey();expect(j.stages[4]).toMatchObject({status:'skipped',approved:true});
+  await call('finish_company_setup');expect((await call('company_purchase_state')).setupComplete).toBe(true);
+  for(const table of ['company_ad_executions','company_paid_plans'])expect(await store.run(tx=>tx.list(table))).toEqual([]);
+  await call('set_traffic_preference',{p_mode:'planned',p_basis:j.stages[4].basis});
+  expect((await journey()).stages[4]).toMatchObject({status:'pending',approved:false});
+  expect((await call('company_purchase_state')).setupComplete).toBe(false);
+ });
+ it('rejects traffic skipping across tenants, before previous reviews or with a stale basis',async()=>{
+  const j=await journey();await expect(call('set_traffic_preference',{p_mode:'skipped',p_basis:j.stages[4].basis})).rejects.toMatchObject({code:'40001'});
+  const outsider=firestoreClient('authenticated',randomUUID(),store);
+  expect((await outsider.rpc('set_traffic_preference',{p_company_id:company,p_mode:'skipped',p_basis:j.stages[4].basis})).error?.code).toBe('42501');
+ });
+ it('persists configurable frequency, rejects other tenants and discards pending old planning',async()=>{
+  await research();await approve(1);const request=randomUUID();await call('start_company_strategy',{p_request_id:request});
+  await call('set_planning_preferences',{p_settings:{postsPerMonth:12,maxPostsPerWeek:4}});expect((await journey()).planning).toEqual({postsPerMonth:12,maxPostsPerWeek:4});
+  expect((await journey()).stages[0].approved).toBe(true);expect((await journey()).stages[1].approved).toBe(false);
+  expect(await call('finish_company_strategy',{p_request_id:request,p_output:output,p_model:'fixture'})).toMatchObject({status:'stale'});
+  const outsider=firestoreClient('authenticated',randomUUID(),store);expect((await outsider.rpc('set_planning_preferences',{p_company_id:company,p_settings:{postsPerMonth:1,maxPostsPerWeek:1}})).error?.code).toBe('42501');
+ });
+ it('freezes scoped digital evidence and changes review basis on new digital evidence',async()=>{
+  await research();await call('save_instagram_watch',{p_username:'clinic.fixture',p_label:'Clinica ficticia',p_kind:'inspiration'});await approve(1);
+  const approved=await store.run(tx=>tx.get('company_marketing_approvals',company+'_1_1'));expect(approved!.snapshot.digital.profiles[0]).toMatchObject({username:'clinic.fixture',snapshot:null});
+  const basis=(await journey()).stages[0].basis;await call('save_instagram_watch',{p_username:'other.fixture',p_label:'Outra ficticia',p_kind:'inspiration'});expect((await journey()).stages[0].basis).not.toBe(basis);expect((await journey()).stages[0].approved).toBe(false);
+  expect(approved!.snapshot.digital.profiles).toHaveLength(1);
+ });
+ it('keeps approval basis stable during monitoring and re-acknowledges skipped traffic after a date change',async()=>{
+  await strategy();await approve(2);await approve(3);const rec=await value(server.rpc('claim_company_launch_server'));await value(server.rpc('finish_company_launch_server',{p_id:rec.id,p_token:rec.token,p_output:recommendations}));await approve(4);
+  let j=await journey();await call('set_traffic_preference',{p_mode:'skipped',p_basis:j.stages[4].basis});j=await journey();
+  const item=j.stages[2].data[0];await call('move_calendar_date',{p_item:item.id,p_revision:1,p_date:'2026-10-06'});await approve(3);await approve(4);j=await journey();expect(j.stages[4].approved).toBe(false);
+  await call('set_traffic_preference',{p_mode:'skipped',p_basis:j.stages[4].basis});expect((await journey()).stages[4]).toMatchObject({status:'skipped',approved:true});
+  const w=randomUUID();await store.run(async tx=>tx.put('company_instagram_watches',w,{id:w,company_id:company,username:'fixture',label:'Ficticia',kind:'inspiration',status:'available',snapshot:{collectedAt:'fixture',followers:1}}));
+  await approve(1);const before=(await journey()).stages[0];await store.run(async tx=>{const row=await tx.get('company_instagram_watches',w);tx.put('company_instagram_watches',w,{...row,status:'running',error:'Transient fixture',token:randomUUID()});});
+  expect((await journey()).stages[0]).toMatchObject({basis:before.basis,approved:true});
  });
  it('invalidates dependent approvals when the strategy is edited and ignores late generation',async()=>{
   const request=await strategy();await approve(2);const brief=(await journey()).stages[1].data;
@@ -224,12 +263,12 @@ describe('Firestore guided strategy — '+(emulator?'local emulator':'isolated m
   expect(await value(server.rpc('finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:recommendations}))).toBe(false);
   expect((await journey()).stages[3].data).toBeNull();await expect(call('finish_company_setup')).rejects.toMatchObject({code:'40001'});
  });
- it('requires future dates, and a date edit invalidates all downstream approvals and setup',async()=>{
+ it('rejects past dates, and a date edit invalidates all downstream approvals and setup',async()=>{
   await strategy();await approve(2);const job=await value(server.rpc('claim_company_launch_server'));await value(server.rpc('finish_company_launch_server',{p_id:job.id,p_token:job.token,p_output:recommendations}));
   for(const stage of [3,4,5])await approve(stage);await call('finish_company_setup');
   const item=(await journey()).stages[2].data[0];await call('move_calendar_date',{p_item:item.id,p_revision:1,p_date:'2026-10-06'});
   expect((await journey()).stages.map((s:Row)=>s.approved)).toEqual([true,true,false,false,false]);expect((await call('company_purchase_state')).setupComplete).toBe(false);
-  await expect(approve(3)).rejects.toMatchObject({code:'22023'});
+  await expect(call('move_calendar_date',{p_item:item.id,p_revision:2,p_date:'2026-10-04'})).rejects.toMatchObject({code:'22023'});
   expect((await user.rpc('move_calendar_date',{p_company_id:company,p_item:item.id,p_revision:1,p_date:'2026-10-12'})).error?.code).toBe('40001');
  });
  it('preserves a manually generated strategy when a worker finishes late',async()=>{

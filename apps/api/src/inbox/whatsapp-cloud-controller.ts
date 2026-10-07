@@ -1,0 +1,33 @@
+import {automationReady} from './automation';
+import {BadRequestException,Body,Controller,ForbiddenException,Get,Headers,HttpCode,Param,Post,Query,Req,ServiceUnavailableException,UseGuards} from '@nestjs/common';
+import {z} from 'zod';
+import type {InboxThread,InboxMessage} from '@askadia/contracts';
+import {AuthGuard,type AuthRequest} from '../identity/auth';
+import {result} from '../identity/service';
+import {serviceDatabase} from '../platform/service';
+import {sealChannel,openChannel} from '../onboarding/channel-vault';
+import {decodeThread} from './evolution';
+import {cloudConfigured,configuredCloudCredentials,verifyCloudNumber,cloudGraph,verifyCloudSignature,verifyCloudChallenge,cloudWebhookEvents,type CloudCredentials} from './whatsapp-cloud';
+function parse<T>(schema:z.ZodType<T>,body:unknown){const parsed=schema.safeParse(body);if(!parsed.success)throw new BadRequestException('Confira os campos do WhatsApp oficial.');return parsed.data;}
+async function access(r:AuthRequest,company:string,action='crm.read'){parse(z.uuid(),company);const cap=result<{actions:string[]}>(await r.actor.client.rpc('company_capabilities',{p_company_id:company}));if(!cap.actions.includes(action))throw new ForbiddenException();}
+async function context(r:AuthRequest,company:string,action='crm.read'){
+ await access(r,company,action);const row=result<{remote_id:string;status:string;metadata:{webhookReady?:boolean};cipher:string}|null>(await serviceDatabase().rpc('read_company_whatsapp_server',{p_company_id:company,p_actor:r.actor.id,p_action:action}));if(!row||row.status!=='connected'||!row.metadata.webhookReady)throw new BadRequestException('O WhatsApp oficial aguarda conexão e confirmação do webhook.');const credentials=openChannel<CloudCredentials>(company,row.cipher);return {row,credentials};
+}
+@Controller('onboarding/companies/:id/whatsapp-cloud')
+@UseGuards(AuthGuard)
+export class WhatsAppCloudController{
+ @Get('status') async status(@Req() r:AuthRequest,@Param('id') company:string){await access(r,company);const rows=result<{status:string;metadata:{webhookReady?:boolean}}[]>(await r.actor.client.from('company_channels').select('status,metadata').eq('company_id',company).eq('provider','whatsapp_cloud'));const channel=rows[0];return {configured:cloudConfigured(company),connected:channel?.status==='connected'&&channel.metadata.webhookReady===true,state:channel?.status??'unconfigured',automaticAvailable:channel?.status==='connected'&&channel.metadata.webhookReady===true&&automationReady()};}
+ @Post('connect') async connect(@Req() r:AuthRequest,@Param('id') company:string){await access(r,company,'billing.manage');if(!cloudConfigured(company))throw new ServiceUnavailableException('Configure o aplicativo e a credencial oficial desta empresa pelo canal seguro do servidor.');const credentials=configuredCloudCredentials(company),verified=await verifyCloudNumber(credentials);await access(r,company,'billing.manage');const row=result(await serviceDatabase().rpc('save_whatsapp_cloud_channel_server',{p_company_id:company,p_actor:r.actor.id,p_phone_id:verified.phoneId,p_waba_id:verified.wabaId,p_name:verified.name,p_platform:'CLOUD_API',p_verified:true,p_cipher:sealChannel(company,credentials)}));return {channel:row,message:'Número verificado. A conexão aguarda um evento assinado no webhook oficial; nenhuma mensagem foi enviada.'};}
+ @Get('threads') async threads(@Req() r:AuthRequest,@Param('id') company:string){await context(r,company);const threads=result<InboxThread[]>(await r.actor.client.rpc('read_whatsapp_cloud_inbox',{p_company_id:company}));return {threads,total:threads.length,hasMore:false};}
+ @Get('messages') async messages(@Req() r:AuthRequest,@Param('id') company:string,@Query() query:unknown){const input=parse(z.object({thread:z.string().max(160)}).strict(),query);await context(r,company);const thread=decodeThread(input.thread);return {messages:result<InboxMessage[]>(await r.actor.client.rpc('read_whatsapp_cloud_inbox',{p_company_id:company,p_thread:thread})),hasMore:false};}
+ @Post('takeover') async takeover(@Req() r:AuthRequest,@Param('id') company:string,@Body() body:unknown){const input=parse(z.object({thread:z.string().max(160)}).strict(),body);await context(r,company,'crm.write');return result(await r.actor.client.rpc('take_inbox_conversation',{p_company_id:company,p_channel:'whatsapp',p_thread:decodeThread(input.thread)}));}
+ @Post('send') async send(@Req() r:AuthRequest,@Param('id') company:string,@Body() body:unknown){const input=parse(z.object({thread:z.string().max(160),requestId:z.uuid(),text:z.string().trim().min(1).max(4096)}).strict(),body),thread=decodeThread(input.thread);const current=await context(r,company,'crm.write');const reserved=result(await r.actor.client.rpc('reserve_whatsapp_cloud_dispatch',{p_company_id:company,p_thread:thread,p_id:input.requestId,p_body:input.text}));if(!reserved)return {state:'duplicate',message:'Solicitação já registrada. Confira o histórico antes de reenviar.'};
+  try{const fresh=await context(r,company,'crm.write');if(fresh.row.remote_id!==current.row.remote_id)throw new Error('Channel changed');const response=await cloudGraph<{messages?:{id:string}[]}>(fresh.row.remote_id,'messages',fresh.credentials.token,{messaging_product:'whatsapp',recipient_type:'individual',to:thread.split('@')[0],type:'text',text:{preview_url:false,body:input.text}});const providerId=response.messages?.[0]?.id;if(!providerId)throw new Error('Unconfirmed');result(await r.actor.client.rpc('finish_inbox_dispatch',{p_company_id:company,p_id:input.requestId,p_state:'sent',p_provider_id:providerId}));return {state:'sent',message:'Mensagem aceita pela API oficial do WhatsApp.'};}catch{await r.actor.client.rpc('finish_inbox_dispatch',{p_company_id:company,p_id:input.requestId,p_state:'uncertain',p_provider_id:null});throw new ServiceUnavailableException('O WhatsApp oficial não confirmou o envio. Confira o histórico antes de reenviar.');}
+ }
+ @Post('disconnect') async disconnect(@Req() r:AuthRequest,@Param('id') company:string){await access(r,company,'billing.manage');result(await r.actor.client.rpc('disconnect_company_channel',{p_company_id:company,p_provider:'whatsapp_cloud'}));return {ok:true};}
+}
+@Controller('webhooks/whatsapp-cloud')
+export class WhatsAppCloudWebhookController{
+ @Get() challenge(@Query() query:unknown){return verifyCloudChallenge(query);}
+ @Post() @HttpCode(200) async event(@Req() request:{rawBody?:Buffer},@Headers('x-hub-signature-256') signature:unknown){verifyCloudSignature(request.rawBody,signature);const events=cloudWebhookEvents(request.rawBody!);for(const event of events)result(await serviceDatabase().rpc('ingest_whatsapp_cloud_server',{p_event:event}));return {received:true};}
+}

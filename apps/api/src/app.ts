@@ -3,7 +3,12 @@ import {DatabaseLifecycle} from './platform/lifecycle';
 import {RegionalResearchController,RegionalResearchWorker} from './onboarding/regional-research';
 import {MedicalIntakeController} from './onboarding/medical-intake-controller';
 import {SupportController} from './support/controller';
+import {WhatsAppCloudController,WhatsAppCloudWebhookController} from './inbox/whatsapp-cloud-controller';
+import {AsaasBillingReconciliationWorker} from './billing/reconciliation';
+import {SocialPublicationController,SocialPublicationWorker} from './social/publication';
+import {MarketingProfileController} from './onboarding/marketing-profile-controller';
 import {PurchaseController} from './billing/controller';
+import {AsaasBillingWebhookController} from './billing/asaas-controller';
 import {AdExecutionController,AdExecutionWorker,AdPreparationWorker} from './campaigns/ad-execution';
 import {VisualJobs,VisualJobsController} from './ai/visual-jobs';
 import {InstagramController,InstagramMonitor,CompetitorResearchWorker} from './onboarding/instagram';
@@ -38,7 +43,7 @@ export class HealthController {
 }
 @Module({
   imports:[DashboardModule],
-  controllers:[RegionalResearchController,MedicalIntakeController,SupportController,PurchaseController,AdExecutionController,VisualJobsController,InstagramController,LaunchController,OverviewController,CompanySiteController,PublicSiteController,AdsController,MetaInboxController,CustomerHistoryController,ManagementController,ManagementIngestionController,CampaignsController,InboxController,ChannelsController,CalendarController,OnboardingController,HealthController,IdentityController,OperationsController],
-  providers:[DatabaseLifecycle,RegionalResearchWorker,CompetitorResearchWorker,AdPreparationWorker,AdExecutionWorker,VisualJobs,InstagramMonitor,LaunchPreparation,ContentPreparation,ImageDescriptions,CampaignDelivery,InboxAutomation,IdentityService,AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({provider:process.env.DATABASE_PROVIDER,url:process.env.SUPABASE_URL,key:(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY)})}],
+  controllers:[RegionalResearchController,MedicalIntakeController,SupportController,PurchaseController,AsaasBillingWebhookController,WhatsAppCloudController,WhatsAppCloudWebhookController,SocialPublicationController,MarketingProfileController,AdExecutionController,VisualJobsController,InstagramController,LaunchController,OverviewController,CompanySiteController,PublicSiteController,AdsController,MetaInboxController,CustomerHistoryController,ManagementController,ManagementIngestionController,CampaignsController,InboxController,ChannelsController,CalendarController,OnboardingController,HealthController,IdentityController,OperationsController],
+  providers:[DatabaseLifecycle,AsaasBillingReconciliationWorker,SocialPublicationWorker,RegionalResearchWorker,CompetitorResearchWorker,AdPreparationWorker,AdExecutionWorker,VisualJobs,InstagramMonitor,LaunchPreparation,ContentPreparation,ImageDescriptions,CampaignDelivery,InboxAutomation,IdentityService,AuthService,AuthGuard,{provide:AUTH_CONFIG,useFactory:()=>({provider:process.env.DATABASE_PROVIDER,url:process.env.SUPABASE_URL,key:(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY)})}],
 })
 export class AppModule {}

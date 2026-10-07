@@ -1,0 +1,5 @@
+import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
+import {ServiceUnavailableException} from '@nestjs/common';
+export function secretKey(){const s=process.env.SECRETS_ENCRYPTION_KEY;if(!s||!/^[a-f0-9]{64}$/i.test(s))throw new ServiceUnavailableException('O cofre de conexões precisa ser configurado.');return Buffer.from(s,'hex');}
+export function sealChannel(company:string,value:unknown){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',secretKey(),iv);cipher.setAAD(Buffer.from(company));const encrypted=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),encrypted].map(b=>b.toString('base64url')).join('.');}
+export function openChannel<T>(company:string,value:string):T{const [iv,tag,encrypted]=value.split('.').map(v=>Buffer.from(v,'base64url'));if(!iv||!tag||!encrypted)throw new Error('Invalid secret');const decipher=createDecipheriv('aes-256-gcm',secretKey(),iv);decipher.setAAD(Buffer.from(company));decipher.setAuthTag(tag);return JSON.parse(Buffer.concat([decipher.update(encrypted),decipher.final()]).toString());}

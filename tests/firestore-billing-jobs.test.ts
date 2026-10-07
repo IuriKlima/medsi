@@ -1,0 +1,16 @@
+import {randomUUID} from 'node:crypto';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {MemoryStore} from './helpers/firestore-memory';
+import {claimBillingReconciliation,finishBillingReconciliation} from '../apps/api/src/billing/reconciliation';
+
+describe('Persistent sandbox billing reconciliation queue',()=>{
+ let store:MemoryStore;
+ beforeEach(async()=>{store=new MemoryStore();vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-07T12:00:00Z'));await store.run(async tx=>{tx.put('billing_reconciliation_jobs','sub_fixture',{subscription_id:'sub_fixture',company_id:randomUUID(),environment:'sandbox',status:'pending',attempts:0,next_attempt_at:new Date().toISOString(),lease_token:null,lease_until:null});});});
+ afterEach(()=>vi.useRealTimers());
+ const claim=()=>store.run(tx=>claimBillingReconciliation(tx));
+ it('leases a subscription atomically so concurrent API replicas do not reconcile twice',async()=>{const jobs=await Promise.all([claim(),claim()]);expect(jobs.filter(Boolean)).toHaveLength(1);expect(jobs.find(Boolean)).toMatchObject({subscription_id:'sub_fixture',attempts:1});});
+ it('recovers a crashed executor after lease expiration and rejects obsolete completion',async()=>{const first=(await claim())!;vi.setSystemTime(new Date(Date.now()+181000));const second=(await claim())!;expect(second.lease_token).not.toBe(first.lease_token);expect(await store.run(tx=>finishBillingReconciliation(tx,first,true,'active'))).toBe(false);expect(await store.run(tx=>finishBillingReconciliation(tx,second,true,'active'))).toBe(true);});
+ it('uses bounded backoff and persists a blocked queue after eight failures',async()=>{for(let i=0;i<8;i++){const job=(await claim())!;expect(job).not.toBeNull();await store.run(tx=>finishBillingReconciliation(tx,job,false));const row=(await store.run(tx=>tx.get('billing_reconciliation_jobs','sub_fixture')))!;if(i<7){expect(Date.parse(row.next_attempt_at)).toBeGreaterThan(Date.now());expect(await claim()).toBeNull();vi.setSystemTime(new Date(row.next_attempt_at));}else expect(row.status).toBe('blocked');}});
+ it('marks repeatedly crashed leases as blocked instead of leaving a permanent running job',async()=>{await store.run(async tx=>{const row=(await tx.get('billing_reconciliation_jobs','sub_fixture'))!;tx.put('billing_reconciliation_jobs','sub_fixture',{...row,status:'running',attempts:8,lease_token:'obsolete',lease_until:'2026-10-07T11:59:00Z'});});expect(await claim()).toBeNull();expect(await store.run(tx=>tx.get('billing_reconciliation_jobs','sub_fixture'))).toMatchObject({status:'blocked',lease_token:null});});
+ it('schedules paid subscriptions hourly and pending subscriptions after five minutes',async()=>{const first=(await claim())!;await store.run(tx=>finishBillingReconciliation(tx,first,true,'active'));expect((await store.run(tx=>tx.get('billing_reconciliation_jobs','sub_fixture')))?.next_attempt_at).toBe('2026-10-07T13:00:00.000Z');vi.setSystemTime(new Date('2026-10-07T13:00:00Z'));const second=(await claim())!;await store.run(tx=>finishBillingReconciliation(tx,second,true,'pending'));expect((await store.run(tx=>tx.get('billing_reconciliation_jobs','sub_fixture')))?.next_attempt_at).toBe('2026-10-07T13:05:00.000Z');});
+});

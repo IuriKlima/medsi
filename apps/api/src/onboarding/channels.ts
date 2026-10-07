@@ -1,13 +1,12 @@
-import {createCipheriv,createDecipheriv,randomBytes,createHash,randomUUID} from 'node:crypto';
+import {randomBytes,createHash,randomUUID} from 'node:crypto';
 import {BadRequestException,Body,Controller,ForbiddenException,Get,Param,Post,Req,ServiceUnavailableException,UseGuards} from '@nestjs/common';
 import {z} from 'zod';
 import {metaPermissions,metaAccess} from '@askadia/contracts';
 import {AuthGuard,type AuthRequest} from '../identity/auth';
 import {result} from '../identity/service';
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
-function secretKey(){const s=process.env.SECRETS_ENCRYPTION_KEY;if(!s||!/^[a-f0-9]{64}$/i.test(s))throw new ServiceUnavailableException('O cofre de conexões precisa ser configurado.');return Buffer.from(s,'hex');}
-export function sealChannel(company:string,value:unknown){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',secretKey(),iv);cipher.setAAD(Buffer.from(company));const encrypted=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),encrypted].map(b=>b.toString('base64url')).join('.');}
-export function openChannel<T>(company:string,value:string):T{const [iv,tag,encrypted]=value.split('.').map(v=>Buffer.from(v,'base64url'));if(!iv||!tag||!encrypted)throw new Error('Invalid secret');const decipher=createDecipheriv('aes-256-gcm',secretKey(),iv);decipher.setAAD(Buffer.from(company));decipher.setAuthTag(tag);return JSON.parse(Buffer.concat([decipher.update(encrypted),decipher.final()]).toString());}
+import {secretKey,sealChannel,openChannel} from './channel-vault';
+export {sealChannel,openChannel} from './channel-vault';
 function parse<T>(s:z.ZodType<T>,v:unknown){const p=s.safeParse(v);if(!p.success)throw new BadRequestException('Confira os dados da conexão.');return p.data;}
 async function owner(r:AuthRequest,company:string){parse(z.uuid(),company);const c=result<{actions:string[]}>(await r.actor.client.rpc('company_capabilities',{p_company_id:company}));if(!c.actions.includes('billing.manage'))throw new ForbiddenException('O proprietário precisa autorizar a conexão da empresa.');}
 export function metaConfigured(){let secureOrigin=false;try{const origin=new URL(process.env.WEB_ORIGIN||'http://127.0.0.1:3000');secureOrigin=origin.protocol==='https:'&&!['localhost','127.0.0.1'].includes(origin.hostname);}catch{/* Invalid deployment origin keeps OAuth unavailable. */}return secureOrigin&&Boolean(process.env.META_APP_ID&&process.env.META_APP_SECRET&&/^v\d+\.\d+$/.test(process.env.META_GRAPH_API_VERSION??'')&&process.env.SECRETS_ENCRYPTION_KEY);}

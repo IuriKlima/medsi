@@ -103,6 +103,11 @@ describe('Firestore checkout — '+(emulator?'local emulator':'isolated memory')
  it('rejects an expired checkout and rolls back all confirmation writes',async()=>{
   const c=await begin();vi.setSystemTime(new Date(c.expires_at));expect((await complete(c.id)).error?.code).toBe('22023');expect((await store.run(tx=>tx.get('company_test_checkouts',c.id)))?.status).toBe('pending');expect(await store.run(tx=>tx.get('company_test_access',company))).toBeNull();
  });
+ it('does not carry a simulated grant into provider checkout mode or production',async()=>{
+  const c=await begin();await value(complete(c.id));expect((await state()).aiAllowed).toBe(true);
+  vi.stubEnv('CHECKOUT_MODE','asaas_sandbox');expect((await state()).aiAllowed).toBe(false);
+  vi.stubEnv('CHECKOUT_MODE','test');vi.stubEnv('NODE_ENV','production');expect((await state()).aiAllowed).toBe(false);
+ });
  it('requires a matching approved test checkout behind an entitlement and gives live access precedence',async()=>{
   const c=await begin();await store.run(async tx=>tx.put('company_test_access',company,{company_id:company,checkout_id:c.id,valid_until:'2026-10-09T12:00:00Z'}));expect((await state()).aiAllowed).toBe(false);
   await value(complete(c.id));await store.run(async tx=>tx.put('company_test_checkouts',c.id,{...c,company_id:otherCompany,status:'test_approved'}));expect((await state()).aiAllowed).toBe(false);

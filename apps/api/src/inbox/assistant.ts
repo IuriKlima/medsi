@@ -6,6 +6,7 @@ import {flowReply,type ServiceSettings,type InboxMessage} from '@askadia/contrac
 export const ATTENDANCE_MODEL=agentModelDefaults.attendance;
 export async function draftServiceReply(settings:ServiceSettings,profile:unknown,messages:InboxMessage[]){
  const last=[...messages].reverse().find(m=>!m.fromMe);if(!last)throw new ServiceUnavailableException('Não há mensagem recebida para responder.');
+ if(/\b(atendente|humano|pessoa real|sintomas?|dor(es)?|sangramento|febre|dosagem|dose|rem[eé]dio|medicamento|prescri[cç][aã]o|estou passando mal|falta de ar)\b/i.test(last.body)||/\b(interpretar|resultado)\b.*\b(exame|laudo)\b/i.test(last.body))return {text:'Sou o assistente administrativo. Vou encaminhar sua mensagem para a equipe responsável, que poderá continuar o atendimento. Não posso avaliar sintomas, orientar medicamentos ou interpretar exames.',handoff:true,model:null};
  if(settings.mode==='flow')return {...flowReply(settings,last.body),model:null};
  if(settings.mode!=='ai')throw new ServiceUnavailableException('Configure a IA ou um fluxo neste canal.');
  if(!process.env.OPENAI_API_KEY)throw new ServiceUnavailableException('A chave da OpenAI precisa ser configurada no servidor.');

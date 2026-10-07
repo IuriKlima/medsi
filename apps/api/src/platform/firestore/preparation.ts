@@ -42,7 +42,7 @@ export async function preparationRpc(tx:DocumentTransaction,actor:FirestoreActor
     let started:Row;
     try{const result=await strategyRpc(tx,access.actor,'start_company_strategy',{p_company_id:job.company_id,p_request_id:runId});if(!result)fail('40001','Strategy request unavailable');started=result!;}catch(e){if((e as {code?:string}).code!=='40001')throw e;tx.put(table,job.id,{...job,status:'failed',error:'Limite de geração atingido. Tente novamente mais tarde.',updated_at:now()});continue;}
     tx.put(table,job.id,{...job,status:'running',token,run_id:runId,generation:started.generation,brief_id:started.id,lease_until:new Date(Date.now()+300000).toISOString(),attempts:job.attempts+1,error:null,updated_at:now()});
-    return {id:job.id,companyId:job.company_id,token,runId,kind:'strategy',frame:0,today:dayInClinic(),context:{facts:started.facts,competitorEvidence:started.competitorEvidence,items:[],item:null}};
+    return {id:job.id,companyId:job.company_id,token,runId,kind:'strategy',frame:0,today:dayInClinic(),context:{facts:started.facts,planning:started.planning,competitorEvidence:started.competitorEvidence,items:[],item:null}};
    }
    tx.put(table,job.id,{...job,status:'running',token,lease_until:new Date(Date.now()+300000).toISOString(),attempts:job.attempts+1,error:null,updated_at:now()});
    return {id:job.id,companyId:job.company_id,token,kind:'recommendations',facts:access.ctx.facts,strategy:access.ctx.brief!.output};

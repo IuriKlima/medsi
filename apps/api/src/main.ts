@@ -21,7 +21,7 @@ if(!firebaseBackend()&&Boolean(env.SUPABASE_URL)!==Boolean(env.SUPABASE_PUBLISHA
 const productionIssues=productionConfigurationIssues();
 if(productionIssues.length)throw new Error('Configuracao de producao pendente:\n- '+productionIssues.join('\n- '));
 async function bootstrap(){
-  const app=await NestFactory.create<NestExpressApplication>(AppModule);
+  const app=await NestFactory.create<NestExpressApplication>(AppModule,{rawBody:true});
   app.useBodyParser('raw',{limit:'50mb',type:request=>Boolean(request.url?.match(/^\/onboarding\/companies\/[^/]+\/calendar\/video\/[^/]+\/[^/]+$/))});
   app.useBodyParser('raw',{limit:'10mb',type:request=>Boolean(request.url?.match(/^\/onboarding\/companies\/[^/]+\/attachments\/[^/]+$/))});
   app.useBodyParser('json',{limit:'2mb',type:request=>request.url?.startsWith('/dashboard/imports')??false});
