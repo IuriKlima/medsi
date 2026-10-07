@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {regionalCompetitorUrl,regionalDistance,regionalMapRequestSchema,regionalPointSchema,type ProfileFacts,type RegionalMap,type RegionalMapRequest,type RegionalPoint} from '@askadia/contracts';
+import {classifyRegionalMap,regionalCompetitorUrl,regionalDistance,regionalMapRequestSchema,regionalPointSchema,type ProfileFacts,type RegionalMap,type RegionalMapRequest,type RegionalPoint} from '@askadia/contracts';
 const point=z.object({lat:z.number().finite(),lon:z.number().finite()});
 const elements=z.object({remark:z.string().optional(),elements:z.array(z.object({type:z.enum(['node','way','relation']),id:z.number().int().positive(),lat:z.number().optional(),lon:z.number().optional(),center:point.optional(),tags:z.record(z.string(),z.string()).optional()})).max(2000)});
 async function read(url:string,transport:typeof fetch,body?:string){
@@ -69,9 +69,9 @@ async function googleCompetitors(center:RegionalPoint,radiusM:number,facts:Profi
    const types=p.types??[];if(!types.some(t=>healthTypes.has(t))||types.some(t=>excludedTypes.has(t)&&!healthTypes.has(t)))continue;
    if(p.id===ownId||ownName&&normalized(name)===ownName)continue;
    const distanceM=regionalDistance(center,point);if(distanceM>radiusM)continue;
-   const id='google/'+p.id,prior=found.get(id);if(prior){if(!prior.specialty&&q.specialty)prior.specialty=q.specialty;continue;}
+   const id='google/'+p.id,prior=found.get(id);if(prior)continue;
    found.set(id,{id,name:name.slice(0,200),address:(p.formattedAddress??'').slice(0,500),lat:point.lat,lng:point.lng,distanceM:Math.round(distanceM),category:(p.primaryTypeDisplayName?.text??types[0]??'').slice(0,200),sourceUrl:regionalCompetitorUrl(id),
-    specialty:q.specialty,rating:typeof p.rating==='number'&&p.rating>=0&&p.rating<=5?p.rating:null,reviewCount:Number.isSafeInteger(p.userRatingCount)&&p.userRatingCount!>=0?p.userRatingCount!:null,phone:p.nationalPhoneNumber?.slice(0,40)??null,website:httpUrl(p.websiteUri)});
+    evidence:[{kind:'category',value:(p.primaryTypeDisplayName?.text??types.join(';')).slice(0,500),sourceUrl:regionalCompetitorUrl(id)}],rating:typeof p.rating==='number'&&p.rating>=0&&p.rating<=5?p.rating:null,reviewCount:Number.isSafeInteger(p.userRatingCount)&&p.userRatingCount!>=0?p.userRatingCount!:null,phone:p.nationalPhoneNumber?.slice(0,40)??null,website:httpUrl(p.websiteUri)});
   }
  }));
  if(!answered)throw Error('PLACES_UNAVAILABLE');
@@ -86,7 +86,7 @@ async function osmCompetitors(center:RegionalPoint,radiusM:number,transport:type
  for(const place of parsed.elements){const tags=place.tags??{},name=tags.name?.trim(),lat=place.lat??place.center?.lat,lng=place.lon??place.center?.lon,category=tags.healthcare??tags.amenity??'';
   if(!name||!['doctor','clinic','hospital','dentist','physiotherapist','psychotherapist','psychologist','doctors'].includes(category)||lat===undefined||lng===undefined||!regionalPointSchema.safeParse({lat,lng}).success)continue;
   const distanceM=regionalDistance(center,{lat,lng}),id=place.type+'/'+place.id;if(distanceM>radiusM||seen.has(id))continue;seen.add(id);
-  list.push({id,name:name.slice(0,200),address:[tags['addr:street'],tags['addr:housenumber'],tags['addr:suburb'],tags['addr:city']].filter(Boolean).join(', ').slice(0,500),lat,lng,distanceM:Math.round(distanceM),category:category.slice(0,200),sourceUrl:regionalCompetitorUrl(id)});
+  list.push({id,name:name.slice(0,200),address:[tags['addr:street'],tags['addr:housenumber'],tags['addr:suburb'],tags['addr:city']].filter(Boolean).join(', ').slice(0,500),lat,lng,distanceM:Math.round(distanceM),category:category.slice(0,200),sourceUrl:regionalCompetitorUrl(id),evidence:Object.entries(tags).filter(([key])=>['healthcare:speciality','healthcare:specialty','speciality','specialty'].includes(key)).map(([,value])=>({kind:'specialty' as const,value:value.slice(0,500),sourceUrl:regionalCompetitorUrl(id)}))});
  }
  return list.sort((a,b)=>a.distanceM-b.distanceM||a.id.localeCompare(b.id)).slice(0,50);
 }
@@ -104,14 +104,14 @@ export async function collectRegionalMap(municipalityId:string|undefined,request
   try{const g=await googleCompetitors(center,radiusM,options.facts,key,transport,options.maxSpecialties??5);
    result.competitors=g.competitors;result.state='available';result.provider='google';result.sourceUrl='https://www.google.com/maps';
    result.message='Clínicas e consultórios encontrados no Google'+(g.specialties.length?' para '+g.specialties.join(', '):'')+', até '+radiusM/1000+' km '+where+'. A busca por especialidade é feita pelo Google e não confirma a área de atuação de cada local. Escolha somente os concorrentes relevantes. Distância em linha reta.';
-   return result;
+   return classifyRegionalMap(result,options.facts??{});
   }catch{/* Fall back to OpenStreetMap below. */}
  }
  try{
   result.competitors=await osmCompetitors(center,radiusM,transport);result.state='available';result.provider='osm';
   result.message='Estabelecimentos de saúde cadastrados no OpenStreetMap, até '+radiusM/1000+' km '+where+'. Escolha somente os concorrentes relevantes para suas especialidades. Cobertura colaborativa, possivelmente incompleta; distância em linha reta, não tempo de viagem.'+(key?' O Google Places não respondeu nesta coleta.':'');
  }catch{result.state='unavailable';result.message='Não foi possível consultar os estabelecimentos. A localização foi preservada. Falha na fonte não significa ausência de concorrentes.';}
- return result;
+ return classifyRegionalMap(result,options.facts??{});
 }
 
 /** A browser-only preview: Google coordinates are not written to a research snapshot.

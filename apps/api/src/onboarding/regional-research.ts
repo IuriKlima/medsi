@@ -46,8 +46,8 @@ export class RegionalResearchController{
   return {status:map?'available':'unavailable',map,message:map?.message??'O provedor não localizou o endereço. Confira o cadastro ou marque o ponto no mapa.'};
  }
  @Post('regional-research/competitors') async select(@Req() r:AuthRequest,@Param('id') id:string,@Body() body:unknown){
-  await adsAccess(r,id,'marketing.write');const input=z.object({revision:z.number().int().positive(),ids:z.array(z.string().regex(regionalCompetitorIdPattern)).max(20)}).strict().safeParse(body);if(!input.success)throw new BadRequestException('Confira a seleção de concorrentes.');
-  result(await r.actor.client.rpc('select_regional_competitors',{p_company_id:id,p_revision:input.data.revision,p_ids:input.data.ids}));return {ok:true};
+  await adsAccess(r,id,'marketing.write');const input=z.object({revision:z.number().int().positive(),ids:z.array(z.string().regex(regionalCompetitorIdPattern)).max(20),confirmedIds:z.array(z.string().regex(regionalCompetitorIdPattern)).max(20).default([])}).strict().safeParse(body);if(!input.success)throw new BadRequestException('Confira a seleção de concorrentes.');
+  result(await r.actor.client.rpc('select_regional_competitors',{p_company_id:id,p_revision:input.data.revision,p_ids:input.data.ids,p_confirmed_ids:input.data.confirmedIds}));return {ok:true};
  }
  @Post('regional-research') async request(@Req() r:AuthRequest,@Param('id') id:string,@Body() body:unknown){
   await adsAccess(r,id,'marketing.write');const input=z.object({refresh:z.boolean().default(false),map:regionalMapRequestSchema.optional()}).strict().safeParse(body);

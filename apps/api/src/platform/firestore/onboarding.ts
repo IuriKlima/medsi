@@ -1,3 +1,4 @@
+import {invalidateCompetitorSelection} from './competitor-invalidation';
 import {purchaseState} from './commerce';
 export {purchaseState} from './commerce';
 import {randomUUID} from 'node:crypto';
@@ -43,6 +44,7 @@ export async function saveMedicalIntake(tx:DocumentTransaction,actor:FirestoreAc
   if(input.step==='address'&&input.answer.businessType!==answers.businessType?.value)fail('22023','O tipo do endereço deve corresponder à primeira resposta.');
   if(input.step==='businessType'&&answers.address)answers.address={...answers.address,businessType:input.answer.value};
   if(input.step==='cnpj'&&hash(answers.cnpj??null)!==hash(input.answer)){delete answers.address;next.location_confirmed=false;}
+  if(state!.profile_version>0&&['businessType','cnpj','address','specialty'].includes(input.step)&&hash(answers[input.step]??null)!==hash(input.answer))await invalidateCompetitorSelection(tx,id,next);
   Object.assign(answers,{[input.step]:input.answer});
  }
  // Every profile edit invalidates downstream approvals without deleting evidence.

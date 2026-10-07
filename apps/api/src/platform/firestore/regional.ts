@@ -1,4 +1,4 @@
-import {regionalMapSchema,regionalMapRequestSchema,regionalDistance,regionalCompetitorUrl} from '@askadia/contracts';
+import {classifyRegionalMap,regionalMapSchema,regionalMapRequestSchema,regionalDistance,regionalCompetitorUrl} from '@askadia/contracts';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import type {DocumentTransaction,Row} from './store';
@@ -29,12 +29,12 @@ export async function regionalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
   const company=uuid(args.p_company_id),access=await companyAccess(tx,actor,company,'marketing.write'),ctx=await context(tx,company);
   if(!(await purchaseState(tx,actor,company)).aiAllowed)fail('P0402','Ative seu plano antes de continuar.');
   const job=ctx.regional;if(!ctx.confirmed||!job||job.status!=='ready'||job.revision!==args.p_revision)fail('40001','Atualize a pesquisa antes de selecionar os concorrentes.');
-  const map=regionalMapSchema.safeParse(job!.snapshot?.map),ids=z.array(z.string()).max(20).safeParse(args.p_ids);
-  if(!map.success||!map.data.locationConfirmed||!ids.success||new Set(ids.data).size!==ids.data.length||ids.data.some(id=>!map.data.competitors.some(c=>c.id===id)))fail('22023','Selecione somente estabelecimentos desta pesquisa e confirme a localização.');
-  const selected=ids.data!.slice().sort();if(map.data!.selectionConfirmed&&JSON.stringify([...map.data!.selectedIds].sort())===JSON.stringify(selected))return null;
+  const raw=regionalMapSchema.safeParse(job!.snapshot?.map),map=raw.success?regionalMapSchema.safeParse(classifyRegionalMap(raw.data,ctx.facts)):raw,ids=z.array(z.string()).max(20).safeParse(args.p_ids),ack=z.array(z.string()).max(20).safeParse(args.p_confirmed_ids??[]);
+  if(!map.success||!map.data.locationConfirmed||!ids.success||new Set(ids.data).size!==ids.data.length||!ack.success||new Set(ack.data).size!==ack.data.length||ack.data.some(id=>!ids.data.includes(id)||!map.data.reviewCandidates?.some(c=>c.id===id))||ids.data.some(id=>!map.data.competitors.some(c=>c.id===id)&&!(ack.data.includes(id)&&map.data.reviewCandidates?.some(c=>c.id===id))))fail('22023','Selecione somente estabelecimentos desta pesquisa e confirme a localização.');
+  const selected=ids.data!.slice().sort();if(map.data!.selectionConfirmed&&JSON.stringify([...map.data!.selectedIds].sort())===JSON.stringify(selected)&&JSON.stringify([...(map.data!.confirmedCandidateIds??[])].sort())===JSON.stringify([...ack.data!].sort()))return null;
   await invalidate(tx,company,ctx.version,1);if(!await tx.get('company_regional_research_versions',job!.id+'_'+job!.revision))tx.put('company_regional_research_versions',job!.id+'_'+job!.revision,job!);
-  const next={...job,revision:job!.revision+1,snapshot:{...job!.snapshot,map:{...map.data,selectedIds:selected,selectionConfirmed:true}},updated_at:now()};
-  tx.put('company_regional_research',job!.id,next);tx.put('company_regional_research_versions',job!.id+'_'+next.revision,next);audit(tx,actor,access.company,'regional.competitors.selected',{revision:next.revision,selectedIds:selected});return null;
+  const next={...job,revision:job!.revision+1,snapshot:{...job!.snapshot,map:{...map.data,selectedIds:selected,confirmedCandidateIds:ack.data!.slice().sort(),selectionConfirmed:true}},updated_at:now()};
+  tx.put('company_regional_research',job!.id,next);tx.put('company_regional_research_versions',job!.id+'_'+next.revision,next);audit(tx,actor,access.company,'regional.competitors.selected',{revision:next.revision,selectedIds:selected,confirmedCandidateIds:ack.data});return null;
  }
  if(name==='request_regional_research'){
   const company=uuid(args.p_company_id),access=await companyAccess(tx,actor,company,'marketing.write'),ctx=await context(tx,company);
@@ -89,11 +89,13 @@ export async function regionalRpc(tx:DocumentTransaction,actor:FirestoreActor,na
  if(job!.map_config&&!data.map)fail('22023','Requested map evidence is missing');
  if(data.map){
   const map=data.map,expected=job!.map_config?.center??null;
-  if(map.selectionConfirmed||map.selectedIds.length)fail('22023','Competitor selection requires customer confirmation');
+  if(map.selectionConfirmed||map.selectedIds.length||map.confirmedCandidateIds?.length)fail('22023','Competitor selection requires customer confirmation');
   // Without a customer point, the server may locate the confirmed address; a customer point always wins.
   const fromAddress=!job!.map_config&&map.centerSource==='address'&&Boolean(map.center)&&map.locationConfirmed;
   if(job!.map_config&&map.centerSource==='address'||!fromAddress&&(map.center?.lat!==expected?.lat||map.center?.lng!==expected?.lng||map.locationConfirmed!==Boolean(job!.map_config))||map.radiusM!==(job!.map_config?.radiusM??3000)||map.state==='available'&&!map.center)fail('22023','Map scope changed');
-  if(map.state!=='available'&&map.competitors.length||new Set(map.competitors.map(c=>c.id)).size!==map.competitors.length||map.competitors.some(c=>!map.center||regionalDistance(map.center,c)>map.radiusM+1||Math.abs(c.distanceM-regionalDistance(map.center,c))>1||c.sourceUrl!==regionalCompetitorUrl(c.id)))fail('22023','Invalid competitor scope');
+  const candidates=[...map.competitors,...(map.reviewCandidates??[])];
+  if(map.state!=='available'&&candidates.length||candidates.length>50||new Set(candidates.map(c=>c.id)).size!==candidates.length||candidates.some(c=>!map.center||regionalDistance(map.center,c)>map.radiusM+1||Math.abs(c.distanceM-regionalDistance(map.center,c))>1||c.sourceUrl!==regionalCompetitorUrl(c.id)))fail('22023','Invalid competitor scope');
+  data.map=classifyRegionalMap(map,access.ctx.facts);
  }
  const completed={...job,status:'ready',snapshot:data,error:null,token:null,lease_until:null,updated_at:now()};
  tx.put('company_regional_research',id,completed);tx.put('company_regional_research_versions',id+'_'+job!.revision,completed);return true;

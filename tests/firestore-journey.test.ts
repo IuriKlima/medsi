@@ -48,7 +48,7 @@ describe('Firestore guided strategy — '+(emulator?'local emulator':'isolated m
  async function strategy(){await research();await approve(1);const request=randomUUID();await call('start_company_strategy',{p_request_id:request});await call('finish_company_strategy',{p_request_id:request,p_output:output,p_model:'fixture',p_response_id:null});return request;}
 
  it('binds selected map competitors to current evidence, permissions, approval and AI context',async()=>{
-  const map={state:'available',center:{lat:-22.82,lng:-47.27},viewport:null,radiusM:3000,locationConfirmed:true,selectionConfirmed:false,competitors:[{id:'node/1',name:'Concorrente fixture',address:'Endereço fixture',lat:-22.821,lng:-47.271,distanceM:151,category:'doctor',sourceUrl:'https://www.openstreetmap.org/node/1'}],selectedIds:[],message:'Fixture OSM',sourceUrl:'https://www.openstreetmap.org/copyright'};
+  const map={state:'available',center:{lat:-22.82,lng:-47.27},viewport:null,radiusM:3000,locationConfirmed:true,selectionConfirmed:false,competitors:[{id:'node/1',name:'Clínica geral fixture',address:'Endereço fixture',lat:-22.821,lng:-47.271,distanceM:151,category:'doctor',sourceUrl:'https://www.openstreetmap.org/node/1'}],selectedIds:[],message:'Fixture OSM',sourceUrl:'https://www.openstreetmap.org/copyright'};
   await call('request_regional_research',{p_map:{center:map.center,radiusM:3000}});const job=await value(server.rpc('claim_regional_research_server'));
   expect(job.map).toEqual({center:map.center,radiusM:3000});
   await value(server.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:{...snapshot,map}}));
@@ -61,6 +61,19 @@ describe('Firestore guided strategy — '+(emulator?'local emulator':'isolated m
   expect(generation.context.competitorEvidence.regional.data.map).toMatchObject({selectedIds:['node/1'],selectionConfirmed:true});
   await expect(call('select_regional_competitors',{p_revision:revision,p_ids:[]})).rejects.toMatchObject({code:'40001'});
   await call('select_regional_competitors',{p_revision:revision+1,p_ids:[]});expect((await journey()).stages[0].approved).toBe(false);
+ });
+ it('persists compatible choices across reads and requires explicit acknowledgment of ambiguous evidence',async()=>{
+  const center={lat:-22.82,lng:-47.27},candidate={id:'node/1',name:'Clínica geral fixture',address:'',...center,distanceM:0,category:'doctor',sourceUrl:'https://www.openstreetmap.org/node/1'};
+  const map={state:'available',center,viewport:null,radiusM:3000,locationConfirmed:true,selectionConfirmed:false,competitors:[candidate,{...candidate,id:'node/2',name:'Clínica Genérica',sourceUrl:'https://www.openstreetmap.org/node/2'},{...candidate,id:'node/3',name:'Dermatologia',sourceUrl:'https://www.openstreetmap.org/node/3'}],selectedIds:[],message:'Fixture',sourceUrl:'https://www.openstreetmap.org/copyright'};
+  await call('request_regional_research',{p_map:{center,radiusM:3000}});const job=await value(server.rpc('claim_regional_research_server'));
+  await value(server.rpc('finish_regional_research_server',{p_id:job.id,p_token:job.token,p_snapshot:{...snapshot,map}}));
+  const revision=(await journey()).stages[0].data.regional.revision;
+  await expect(call('select_regional_competitors',{p_revision:revision,p_ids:['node/2']})).rejects.toMatchObject({code:'22023'});
+  await expect(call('select_regional_competitors',{p_revision:revision,p_ids:['node/3'],p_confirmed_ids:['node/3']})).rejects.toMatchObject({code:'22023'});
+  await call('select_regional_competitors',{p_revision:revision,p_ids:['node/1','node/2'],p_confirmed_ids:['node/2']});
+  const reloaded=await value(firestoreClient('authenticated',owner,store).rpc('read_marketing_journey',{p_company_id:company}));
+  expect(reloaded.stages[0].data.regional.data.map).toMatchObject({selectedIds:['node/1','node/2'],confirmedCandidateIds:['node/2'],selectionConfirmed:true});
+  expect(reloaded.stages[0].data.regional.data.map.competitors.map((c:Row)=>c.id)).toEqual(['node/1']);
  });
  it('accepts leased source progress only and never changes an approval basis for progress',async()=>{
   await call('request_regional_research');const job=await value(server.rpc('claim_regional_research_server'));const basis=(await journey()).stages[0].basis;

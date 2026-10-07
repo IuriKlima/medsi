@@ -1,3 +1,4 @@
+import {invalidateCompetitorSelection} from './competitor-invalidation';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {profilePatchSchema,onboardingReplySchema,missingEssentials,interviewKeys,questions,type OnboardingState,type ProfileFacts} from '@askadia/contracts';
@@ -53,6 +54,7 @@ export async function marketingProfileRpc(tx:DocumentTransaction,actor:Firestore
  if(action==='confirm_location'){if(!facts.city?.value&&!facts.address?.value)fail('22023','Informe a localização.');next.location_confirmed=true;}
  if(action==='review_competitors')next.competitors_reviewed=true;
  if(action==='review_references')next.references_reviewed=true;
+ if(['businessType','services','city','address','placeId'].some(k=>patch[k]&&hash(patch[k])!==hash({value:state!.facts[k]?.value,status:state!.facts[k]?.status})))await invalidateCompetitorSelection(tx,id,next);
  if(action==='confirm'){
   if(name==='save_company_onboarding'&&(missingEssentials(facts).length||!next.location_confirmed))fail('22023','Complete os fatos essenciais e confirme a localização.');
   if(source==='assistant_suggestion')fail('22023','Confirme pessoalmente os fatos antes de criar uma versão.');await commitProfile(tx,actor,access.company,state!,next,'Fatos de marketing atualizados: revisar propostas e materiais.');

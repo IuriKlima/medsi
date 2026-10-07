@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {instagramUsername,instagramSnapshotSchema} from '@askadia/contracts';
 import type {DocumentTransaction,Row} from './store';
 import {type FirestoreActor,companyAccess,server,uuid,text,hash,fail,audit} from './access';
-import {context,invalidate,now,scoped,type JourneyContext} from './journey-state';
+import {context,invalidate,now,scoped,digitalResearchCurrent} from './journey-state';
 import {eligible,liveLease,due,retry,stale} from './regional';
 import {channelRpc} from './channels';
 import {providerRpc} from './providers';
@@ -12,7 +12,6 @@ export const digitalOperations=['request_competitor_research','save_instagram_wa
 const after=(ms:number)=>new Date(Date.now()+ms).toISOString();
 const handle=(value:unknown)=>{try{return instagramUsername(text(value,1,2000));}catch{return fail('22023','Invalid Instagram profile');}};
 const candidate=z.object({username:z.string(),name:z.string().max(160),url:z.string(),context:z.string().max(300)}).strict();
-export function digitalResearchCurrent(ctx:JourneyContext,job:Row){return job.profile_version===ctx.version&&(job.origin==='user_confirmed_places_selection'?ctx.confirmed&&ctx.state?.location_confirmed&&job.city===ctx.facts.city?.value&&String(ctx.facts.competitorPlaceIds?.value??'').split('\n').includes(job.place_id):job.regional_revision===ctx.regional?.revision);}
 async function authorization(tx:DocumentTransaction,job:Row){
  try{const actor:FirestoreActor={role:'authenticated',id:job.actor_id};await companyAccess(tx,actor,job.company_id,'marketing.write');if(!(await purchaseState(tx,actor,job.company_id)).aiAllowed)return null;if(job.place_id){const ctx=await context(tx,job.company_id),research=(await tx.list('company_competitor_research',scoped(job.company_id))).find(r=>r.place_id===job.place_id);if(!ctx.confirmed||!research||!digitalResearchCurrent(ctx,research)||research.selected_username!==job.username)return null;}const channel=await channelRpc(tx,{role:'service_role',id:null},'read_company_meta_server',{p_company_id:job.company_id,p_actor:job.actor_id,p_action:'marketing.write'});return typeof channel==='object'?channel:null;}catch(e){if((e as Row).code==='42501')return null;throw e;}
 }
@@ -24,7 +23,7 @@ export async function digitalRpc(tx:DocumentTransaction,actor:FirestoreActor,nam
   if(name==='request_competitor_research'){
    const place=text(args.p_place_id,1,200),id=hash({company,place}),prior=await tx.get('company_competitor_research',id),map=ctx.regional?.snapshot?.map;
    const places=prior?.origin==='user_confirmed_places_selection'&&ctx.state?.location_confirmed&&String(ctx.facts.competitorPlaceIds?.value??'').split('\n').includes(place)&&prior.city===ctx.facts.city?.value;
-   const selected=places?{name:prior!.label}:map?.selectionConfirmed?map.competitors.find((c:Row)=>c.id===place&&map.selectedIds.includes(place)):null;
+   const selected=places?{name:prior!.label}:map?.selectionConfirmed?[...map.competitors,...(map.reviewCandidates??[])].find((c:Row)=>c.id===place&&map.selectedIds.includes(place)):null;
    if(!ctx.confirmed||!selected)fail('40001','Confirme os concorrentes da pesquisa atual.');
    if(!(await eligible(tx,{company_id:company,actor_id:actor.id,profile_version:ctx.version})))fail('P0402','Perfil e plano ativos são necessários.');
    if(prior&&prior.status!=='selected'&&digitalResearchCurrent(ctx,prior))return prior;

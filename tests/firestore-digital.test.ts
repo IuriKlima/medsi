@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {MemoryStore} from './helpers/firestore-memory';
+import {context} from '../apps/api/src/platform/firestore/journey-state';
 import {digitalRpc} from '../apps/api/src/platform/firestore/digital';
 import type {Row} from '../apps/api/src/platform/firestore/store';
 import {hash,type FirestoreActor} from '../apps/api/src/platform/firestore/access';
@@ -26,7 +27,7 @@ describe('Firestore digital opt-in (isolated fixtures)',()=>{
  });
  it('drops an in-flight result after connection revocation and rejects unconfirmed competitor',async()=>{await connect();const w=await watch(),job=await call('claim_instagram_watch_server',{},service);await store.run(async tx=>tx.remove('channel_secrets','channel'));expect(await call('finish_instagram_watch_server',{p_id:w.id,p_token:job.token,p_snapshot:snapshot},service)).toBe(false);expect((await store.run(tx=>tx.get('company_instagram_watches',w.id)))?.snapshot).toBeNull();await expect(call('request_competitor_research',{p_place_id:'node/1'})).rejects.toMatchObject({code:'40001'});});
  it('research requires paid confirmed scope, quota and explicit profile selection',async()=>{
-  const regional=randomUUID();await store.run(async tx=>{tx.put('company_journey_state',company+'_1',{regional_id:regional});tx.put('company_regional_research',regional,{id:regional,status:'ready',revision:1,snapshot:{map:{selectionConfirmed:true,selectedIds:['node/1'],competitors:[{id:'node/1',name:'Clinic neighbor fixture'}]}}});tx.put('company_test_access',company,{company_id:company,checkout_id:'fixture',valid_until:new Date(Date.now()+86400000).toISOString()});tx.put('company_test_checkouts','fixture',{company_id:company,mode:'test',status:'test_approved'});tx.put('onboarding_provider_limits',company+'_interpretation',{daily_calls:2});});
+  const regional=randomUUID();await store.run(async tx=>{tx.put('company_journey_state',company+'_1',{regional_id:regional});tx.put('company_regional_research',regional,{id:regional,status:'ready',revision:1,snapshot:{map:{selectionConfirmed:true,selectedIds:['node/1'],confirmedCandidateIds:['node/1'],competitors:[],reviewCandidates:[{id:'node/1',name:'Clinic neighbor fixture',category:'clinic',sourceUrl:'https://www.openstreetmap.org/node/1'}]}}});tx.put('company_test_access',company,{company_id:company,checkout_id:'fixture',valid_until:new Date(Date.now()+86400000).toISOString()});tx.put('company_test_checkouts','fixture',{company_id:company,mode:'test',status:'test_approved'});tx.put('onboarding_provider_limits',company+'_interpretation',{daily_calls:2});});
   const requested=await call('request_competitor_research',{p_place_id:'node/1'});expect(await call('request_competitor_research',{p_place_id:'node/1'})).toEqual(requested);
   const job=await call('claim_competitor_research_server',{},service);expect(job.query).toBe('Clinic neighbor fixture');expect(await call('claim_competitor_research_server',{},service)).toBeNull();
   const found={username:'neighbor.fixture',name:'Fixture',url:'https://www.instagram.com/neighbor.fixture/',context:'Public source fixture'};
@@ -34,6 +35,23 @@ describe('Firestore digital opt-in (isolated fixtures)',()=>{
   expect(await call('finish_competitor_research_server',{p_id:job.id,p_token:job.token,p_candidates:[found]},service)).toBe(true);expect(await store.run(tx=>tx.list('company_instagram_watches'))).toHaveLength(0);
   await call('select_competitor_instagram',{p_place_id:'node/1',p_username:found.username});expect((await store.run(tx=>tx.list('company_instagram_watches')))[0]?.place_id).toBe('node/1');
   await store.run(async tx=>{const r=await tx.get('company_regional_research',regional);tx.put('company_regional_research',regional,{...r,revision:2});});await expect(call('select_competitor_instagram',{p_place_id:'node/1',p_username:found.username})).rejects.toMatchObject({code:'40001'});
+ });
+ it('revokes legacy digital research when evidence removes its selected competitor without changing revision',async()=>{
+  const regional=randomUUID(),id=hash({company,place:'node/1'}),token=randomUUID();
+  await store.run(async tx=>{
+   tx.put('company_journey_state',company+'_1',{regional_id:regional});
+   tx.put('company_regional_research',regional,{id:regional,company_id:company,status:'ready',revision:1,snapshot:{map:{selectionConfirmed:true,selectedIds:['node/1'],competitors:[{id:'node/1',name:'Clínica Genérica',specialty:'Cardiologia',category:'clinic',sourceUrl:'https://www.openstreetmap.org/node/1'}]}}});
+   tx.put('company_competitor_research',id,{id,company_id:company,actor_id:owner,profile_version:1,origin:'regional_map_selection',regional_revision:1,place_id:'node/1',label:'Clínica Genérica',status:'ready',candidates:[],selected_username:'neighbor.fixture'});
+   tx.put('company_instagram_watches','legacy-watch',{id:'legacy-watch',company_id:company,actor_id:owner,place_id:'node/1',username:'neighbor.fixture',status:'pending',next_attempt_at:new Date(0).toISOString()});
+  });
+  const ctx=await store.run(tx=>context(tx,company));expect(ctx.regional?.snapshot.map.selectedIds).toEqual([]);expect(ctx.digital.research).toEqual([]);expect(ctx.digital.profiles).toEqual([]);
+  await expect(call('retry_competitor_research',{p_place_id:'node/1'})).rejects.toMatchObject({code:'40001'});
+  await expect(call('select_competitor_instagram',{p_place_id:'node/1',p_username:'neighbor.fixture'})).rejects.toMatchObject({code:'40001'});
+  await connect();expect(await call('claim_instagram_watch_server',{},service)).toBeNull();
+  await store.run(async tx=>{const row=await tx.get('company_competitor_research',id);tx.put('company_competitor_research',id,{...row,status:'running',selected_username:null,token,lease_until:new Date(Date.now()+60000).toISOString()});});
+  expect(await call('finish_competitor_research_server',{p_id:id,p_token:token,p_candidates:[]},service)).toBe(false);
+  await store.run(async tx=>{const row=await tx.get('company_competitor_research',id);tx.put('company_competitor_research',id,{...row,status:'pending',attempts:0,next_attempt_at:new Date(0).toISOString()});});
+  expect(await call('claim_competitor_research_server',{},service)).toBeNull();
  });
  it('stops recurring discovery without paid access and rejects in-flight expired access',async()=>{
   await connect();const w=await watch();await store.run(async tx=>tx.remove('company_test_access',company));expect(await call('claim_instagram_watch_server',{},service)).toBeNull();expect(await store.run(tx=>tx.list('onboarding_provider_attempts'))).toHaveLength(0);

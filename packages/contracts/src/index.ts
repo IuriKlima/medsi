@@ -102,3 +102,4 @@ export * from './medical-intake';
 export * from './regional-audience';
 export * from './regional-topics';
 export * from './regional-map';
+export * from './competitor-relevance';

@@ -1,3 +1,4 @@
+import {classifyRegionalMap} from '@askadia/contracts';
 import {randomUUID} from 'node:crypto';
 import type {DocumentTransaction,Row} from './store';
 import {fail,hash} from './access';
@@ -14,12 +15,19 @@ export async function anchor(tx:DocumentTransaction,company:string,version:numbe
  const key=company+'_'+version;let row=await tx.get('company_journey_state',key);
  if(!row){row={company_id:company,profile_version:version,brief_id:randomUUID(),regional_id:randomUUID(),content_id:randomUUID(),recommendations_id:randomUUID()};tx.put('company_journey_state',key,row);}return row;
 }
+export function digitalResearchCurrent(ctx:{confirmed:boolean;state:Row|null;version:number;facts:Row;regional:Row|null},job:Row){
+ if(!ctx.confirmed||job.status==='stale'||job.profile_version!==ctx.version)return false;
+ if(job.origin==='user_confirmed_places_selection')return Boolean(ctx.state?.location_confirmed&&job.city===ctx.facts.city?.value&&String(ctx.facts.competitorPlaceIds?.value??'').split('\n').includes(job.place_id));
+ const map=ctx.regional?.snapshot?.map;
+ return Boolean(ctx.regional?.status==='ready'&&job.regional_revision===ctx.regional.revision&&map?.selectionConfirmed&&map.selectedIds?.includes(job.place_id));
+}
 export async function context(tx:DocumentTransaction,company:string){
  const state=await tx.get('company_onboarding',company),version=state?.profile_version??0;
  const [profile,index,approvals,traffic,preferences]=await Promise.all([tx.get('company_profile_versions',company+'_'+version),tx.get('company_journey_state',company+'_'+version),tx.list('company_marketing_approvals',scoped(company)),tx.get('company_traffic_preferences',company+'_'+version),tx.get('company_planning_preferences',company+'_'+version)]);
  const get=(table:string,id:unknown)=>typeof id==='string'?tx.get(table,id):Promise.resolve(null);
- const [brief,regional,content,recommendations,items,watches,research]=await Promise.all([get('company_strategy_briefs',index?.brief_id),get('company_regional_research',index?.regional_id),get('company_content_preparations',index?.content_id),get('company_launch_jobs',index?.recommendations_id),tx.list('company_calendar_items',scoped(company)),tx.list('company_instagram_watches',scoped(company)),tx.list('company_competitor_research',scoped(company))]);
- const currentResearch=(r:Row)=>r.profile_version===version&&(r.origin==='user_confirmed_places_selection'?Boolean(state?.location_confirmed&&profile?.facts.competitorPlaceIds?.value?.split('\n').includes(r.place_id)&&r.city===profile?.facts.city?.value):r.regional_revision===regional?.revision);
+ const [brief,storedRegional,content,recommendations,items,watches,research]=await Promise.all([get('company_strategy_briefs',index?.brief_id),get('company_regional_research',index?.regional_id),get('company_content_preparations',index?.content_id),get('company_launch_jobs',index?.recommendations_id),tx.list('company_calendar_items',scoped(company)),tx.list('company_instagram_watches',scoped(company)),tx.list('company_competitor_research',scoped(company))]);
+ const regional:Row|null=storedRegional?{...storedRegional,snapshot:storedRegional.status==='stale'||!confirmed(state)?null:storedRegional.snapshot?.map?{...storedRegional.snapshot,map:classifyRegionalMap(storedRegional.snapshot.map,profile?.facts??{})}:storedRegional.snapshot}:null;
+ const currentResearch=(r:Row)=>digitalResearchCurrent({confirmed:confirmed(state),state,version,facts:profile?.facts??{},regional},r);
  return {company,state,version,facts:profile?.facts??{},confirmed:confirmed(state)&&Boolean(profile),index,brief,regional,content,recommendations,traffic,planning:planningPreferencesSchema.safeParse(preferences?.settings).data??defaultPlanningPreferences,digital:{profiles:watches.filter(w=>!w.place_id||research.some(r=>r.place_id===w.place_id&&currentResearch(r)&&r.selected_username===w.username)).map(w=>({id:w.id,username:w.username,label:w.label,kind:w.kind,status:w.status,snapshot:w.snapshot??null,error:w.error??null})).sort((a,b)=>a.id.localeCompare(b.id)),research:research.filter(currentResearch).map(r=>({placeId:r.place_id,status:r.status,candidates:r.candidates??[],selectedUsername:r.selected_username??null,collectedAt:r.collected_at??null,error:r.error??null})).sort((a,b)=>a.placeId.localeCompare(b.placeId))},approvals:approvals.filter(a=>a.profile_version===version),items:items.filter(i=>brief&&i.brief_id===brief.id&&i.generation===brief.generation).sort((a,b)=>a.position-b.position)};
 }
 export type JourneyContext=Awaited<ReturnType<typeof context>>;

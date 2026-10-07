@@ -15,7 +15,7 @@ describe('regional map — isolated provider fixtures',()=>{
   const center={lat:-22.82,lng:-47.27};let request='';
   const fetcher:typeof fetch=async(_,init)=>{request=String(init?.body);return new Response(JSON.stringify({elements:[{type:'node',id:1,lat:-22.821,lon:-47.271,tags:{name:'Consultório fixture',healthcare:'doctor'}},{type:'node',id:2,lat:-23.5,lon:-47.2,tags:{name:'Fora do raio',healthcare:'doctor'}},{type:'node',id:3,lat:-22.821,lon:-47.271,tags:{name:'Loja fixture',shop:'books'}}]}));};
   const map=await collectRegionalMap(undefined,{center,radiusM:1000},fetcher);
-  expect(request).toContain('around');expect(map.competitors.map(v=>v.id)).toEqual(['node/1']);expect(map.selectedIds).toEqual([]);expect(map.selectionConfirmed).toBe(false);
+  expect(request).toContain('around');expect(map.reviewCandidates?.map(v=>v.id)).toEqual(['node/1']);expect(map.selectedIds).toEqual([]);expect(map.selectionConfirmed).toBe(false);
  });
  it('does not treat Overpass timeout remarks in HTTP 200 as an empty successful search',async()=>{
   const map=await collectRegionalMap(undefined,{center:{lat:-22,lng:-47},radiusM:3000},async()=>new Response(JSON.stringify({remark:'runtime error: Query timed out',elements:[]})));
@@ -33,8 +33,8 @@ describe('regional map — isolated provider fixtures',()=>{
  it('bounds and deduplicates the nearest candidates while preserving canonical public sources',async()=>{
   const center={lat:-22,lng:-47},places=Array.from({length:65},(_,i)=>({type:'node',id:i+1,lat:-22-i/10000,lon:-47,tags:{name:'Fixture '+i,healthcare:'clinic'}}));
   const map=await collectRegionalMap(undefined,{center,radiusM:1000},async()=>new Response(JSON.stringify({elements:[...places.reverse(),places[0]]})));
-  expect(map.competitors).toHaveLength(50);expect(new Set(map.competitors.map(c=>c.id)).size).toBe(50);expect(map.competitors[0].id).toBe('node/1');
-  expect(map.competitors.every(c=>c.sourceUrl==='https://www.openstreetmap.org/'+c.id&&c.distanceM<=1000)).toBe(true);
+  expect(map.reviewCandidates).toHaveLength(50);expect(new Set(map.reviewCandidates?.map(c=>c.id)).size).toBe(50);expect(map.reviewCandidates?.[0].id).toBe('node/1');
+  expect(map.reviewCandidates?.every(c=>c.sourceUrl==='https://www.openstreetmap.org/'+c.id&&c.distanceM<=1000)).toBe(true);
  });
  it('ignores invalid provider coordinates instead of producing evidence that cannot be persisted',async()=>{
   const center={lat:-22,lng:-47};
@@ -48,7 +48,7 @@ describe('automatic address preview — transient coordinates, persistent OSM ca
  it('locates the confirmed address and searches OSM without fetching Google competitor details',async()=>{
   const calls:string[]=[];const transport:typeof fetch=async(input)=>{calls.push(String(input));return String(input).includes('googleapis')?Response.json({places:[{id:'fixture-place',location:{latitude:-22.82,longitude:-47.27}}]}):Response.json({elements:[{type:'node',id:1,lat:-22.821,lon:-47.271,tags:{name:'Consultório fictício',healthcare:'doctor'}}]});};
   const map=await previewRegionalMap(confirmedFacts,'fixture-key',transport);
-  expect(map).toMatchObject({center:{lat:-22.82,lng:-47.27},centerSource:'address',locationConfirmed:false,provider:'osm',state:'available'});expect(map?.competitors).toHaveLength(1);expect(calls).toHaveLength(2);expect(calls[1]).toContain('overpass');
+  expect(map).toMatchObject({center:{lat:-22.82,lng:-47.27},centerSource:'address',locationConfirmed:false,provider:'osm',state:'available'});expect(map?.reviewCandidates).toHaveLength(1);expect(calls).toHaveLength(2);expect(calls[1]).toContain('overpass');
  });
  it('never guesses a point from only the city, an assistant suggestion, an empty response or a provider failure',async()=>{
   const never:typeof fetch=async()=>{throw Error('No provider result');};

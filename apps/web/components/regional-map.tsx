@@ -4,7 +4,7 @@ import type {Map as LeafletMap,LayerGroup} from 'leaflet';
 import type {RegionalMap as MapData,RegionalPoint} from '@askadia/contracts';
 import 'leaflet/dist/leaflet.css';
 import s from './regional-audience.module.css';
-export function RegionalMap({data,point,radiusM,selected,onPoint,onToggle,disabled}:{data:MapData;point:RegionalPoint|null;radiusM:number;selected:string[];onPoint:(point:RegionalPoint)=>void;onToggle:(id:string)=>void;disabled:boolean}){
+export function RegionalMap({data,point,radiusM,selected,focus,onPoint,onToggle,disabled}:{data:MapData;point:RegionalPoint|null;radiusM:number;selected:string[];focus?:{id:string;nonce:number};onPoint:(point:RegionalPoint)=>void;onToggle:(id:string)=>void;disabled:boolean}){
  const host=useRef<HTMLDivElement>(null),map=useRef<LeafletMap|null>(null),layer=useRef<LayerGroup|null>(null);const [ready,setReady]=useState(false),[error,setError]=useState('');
  const actions=useRef({onPoint,onToggle,disabled});useEffect(()=>{actions.current={onPoint,onToggle,disabled};},[onPoint,onToggle,disabled]);
  const initial=useRef({point,viewport:data.viewport}),framed=useRef('');
@@ -16,8 +16,8 @@ export function RegionalMap({data,point,radiusM,selected,onPoint,onToggle,disabl
   return()=>{cancelled=true;map.current?.remove();map.current=null;layer.current=null;};
  },[]);
  useEffect(()=>{if(!ready)return;let cancelled=false;void import('leaflet').then(L=>{if(cancelled||!map.current||!layer.current)return;layer.current.clearLayers();if(point){const circle=L.circle([point.lat,point.lng],{radius:radiusM,color:'#123d46',fillColor:'#42d6b0',fillOpacity:.12,weight:2,interactive:false}).addTo(layer.current);L.circleMarker([point.lat,point.lng],{radius:9,color:'#fff',fillColor:'#123d46',fillOpacity:1,weight:3}).bindTooltip('Seu local de atendimento').addTo(layer.current);const frame=JSON.stringify([point.lat,point.lng,radiusM]);if(framed.current!==frame){map.current.invalidateSize();map.current.fitBounds(circle.getBounds(),{padding:[28,28],maxZoom:16});framed.current=frame;}}
-   for(const c of data.competitors){const label=document.createElement('span');label.textContent=c.name;L.circleMarker([c.lat,c.lng],{radius:selected.includes(c.id)?9:6,color:selected.includes(c.id)?'#123d46':'#6e8587',fillColor:selected.includes(c.id)?'#42d6b0':'#fff',fillOpacity:1,weight:2,bubblingMouseEvents:false}).bindTooltip(label).on('click',()=>{if(!actions.current.disabled)actions.current.onToggle(c.id);}).addTo(layer.current);}
+   for(const c of data.competitors){const label=document.createElement('span');label.textContent=c.name;const marker=L.circleMarker([c.lat,c.lng],{radius:selected.includes(c.id)?9:6,color:selected.includes(c.id)?'#123d46':'#6e8587',fillColor:selected.includes(c.id)?'#42d6b0':'#fff',fillOpacity:1,weight:2,bubblingMouseEvents:false}).bindTooltip(label).on('click',()=>{if(!actions.current.disabled)actions.current.onToggle(c.id);}).addTo(layer.current);if(focus?.id===c.id){marker.openTooltip();map.current.panTo([c.lat,c.lng]);}}
   });return()=>{cancelled=true;};
- },[data.competitors,point,radiusM,ready,selected]);
+ },[data.competitors,point,radiusM,ready,selected,focus]);
  return <><div ref={host} className={s.mapCanvas} aria-label="Mapa do atendimento e dos estabelecimentos próximos"/>{!ready&&!error&&<p role="status">Abrindo o mapa…</p>}{error&&<p role="status">{error}</p>}<small>Clique no mapa para posicionar o atendimento. Use a lista abaixo para selecionar concorrentes pelo teclado.</small></>;
 }
